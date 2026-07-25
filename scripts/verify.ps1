@@ -6,9 +6,24 @@ if (-not (Test-Path -LiteralPath $maven)) {
 }
 
 & $maven -pl apps/control-plane test
-node --test apps/portal/test/release-view-model.test.mjs
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+Push-Location apps/portal
+try {
+    node --test test/release-view-model.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+} finally {
+    Pop-Location
+}
 
 $rendered = (kubectl kustomize infra/k8s/base) -join "`n"
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 foreach ($required in @('runtimeClassName:\s+gvisor', 'name:\s+default-deny-all', 'readOnlyRootFilesystem:\s+true')) {
     if ($rendered -notmatch $required) {
         throw "Rendered Kubernetes resources are missing required pattern: $required"
