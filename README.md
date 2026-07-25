@@ -2,7 +2,7 @@
 
 This proof of concept governs and hosts enterprise-internal Agent and MCP (Model Context Protocol) capabilities. It connects capability definition, dependency resolution, security review, approval, publication, deployment and runtime observation in one auditable chain while remaining vendor-neutral across model providers, Agent frameworks and MCP implementations.
 
-This repository starts with architecture and delivery contracts. Application behavior will be added incrementally according to [`docs/implementation-plan.md`](docs/implementation-plan.md).
+This repository contains an early governance control-plane slice. It is intentionally not production ready: the OCI provenance/signature verifier, GitOps reconciler, Keycloak tenant and hosted runtime integrations are still pending.
 
 ## PoC Scope
 
@@ -64,4 +64,20 @@ Run from the repository root:
 .\scripts\verify.ps1
 ```
 
-The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. Do not interpret passing local checks as a production-readiness claim.
+The script uses the checked-in Maven Wrapper rather than a machine-specific Maven installation. Its first run needs access to Maven Central. The control plane defaults to PostgreSQL; export the variables documented in [`.env.example`](.env.example) before running it outside the test profile. The test profile uses H2 only for automated tests.
+
+The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. CI installs the locked dependency graph and runs Vitest. Do not interpret passing local checks as a production-readiness claim.
+
+## Control Plane Security
+
+All control-plane API routes require a JWT except Kubernetes health probes. Keycloak realm roles are mapped from `realm_access.roles`; a local token may instead provide a flat `roles` claim. Role names are normalized to uppercase, with `-` converted to `_`. Every JWT must include a `department` claim, which scopes capability and release access.
+
+| Role | Allowed operations |
+| --- | --- |
+| `OWNER` | Create capabilities in its department |
+| `REVIEWER` | Validate, request review and reject releases |
+| `APPROVER` | Approve a review-ready release |
+| `OPERATOR` | Register immutable OCI releases, publish, revoke and report deployment state |
+| `READ_ONLY` | Read department-scoped audit events |
+
+Release registration accepts only `oci://...@sha256:<64 hex>` references and derives the stored digest from that reference. The caller must be an authenticated `OPERATOR`, normally a CI service identity. Registry existence and signature/provenance verification remain a required next integration; this repository does not yet claim that an OCI digest has been independently verified.

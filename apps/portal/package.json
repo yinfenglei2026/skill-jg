@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run"
+    "test": "vitest run test/release-view-model.vitest.mjs"
   },
   "dependencies": {
     "react": "19.2.0",

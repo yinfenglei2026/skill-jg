@@ -1,6 +1,7 @@
 # Java / JVM
 .gradle/
 .mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
 target/
 *.class
 *.jar

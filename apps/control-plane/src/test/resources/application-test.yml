@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:governance;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=0
+    username: sa
+    password: ''
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://issuer.test.invalid/realms/governance
+          jwk-set-uri: http://localhost/test-jwks

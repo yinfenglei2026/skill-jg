@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,37 +29,80 @@ public class GovernanceController {
 
     @PostMapping("/capabilities")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('OWNER')")
     CapabilityResponse createCapability(@Valid @RequestBody CreateCapabilityRequest request) {
         return CapabilityResponse.from(service.createCapability(request.name(), request.department(), request.type()));
     }
 
     @PostMapping("/capabilities/{capabilityId}/releases")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('OPERATOR')")
     ReleaseResponse createRelease(@PathVariable String capabilityId, @Valid @RequestBody CreateReleaseRequest request) {
-        return ReleaseResponse.from(service.createRelease(capabilityId, request.version(), request.digest()));
+        return ReleaseResponse.from(service.createRelease(capabilityId, request.version(), request.artifactReference()));
     }
 
     @PostMapping("/releases/{releaseId}/validate")
+    @PreAuthorize("hasRole('REVIEWER')")
     ReleaseResponse validate(@PathVariable String releaseId) {
         return ReleaseResponse.from(service.validate(releaseId));
     }
 
     @PostMapping("/releases/{releaseId}/review-required")
+    @PreAuthorize("hasRole('REVIEWER')")
     ReleaseResponse reviewRequired(@PathVariable String releaseId) {
         return ReleaseResponse.from(service.requireReview(releaseId));
     }
 
     @PostMapping("/releases/{releaseId}/approve")
-    ReleaseResponse approve(@PathVariable String releaseId, @Valid @RequestBody ApproveReleaseRequest request) {
-        return ReleaseResponse.from(service.approve(releaseId, request.actor(), request.digest()));
+    @PreAuthorize("hasRole('APPROVER')")
+    ReleaseResponse approve(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.approve(releaseId));
     }
 
     @PostMapping("/releases/{releaseId}/publish")
+    @PreAuthorize("hasRole('OPERATOR')")
     ReleaseResponse publish(@PathVariable String releaseId) {
         return ReleaseResponse.from(service.publish(releaseId));
     }
 
+    @PostMapping("/releases/{releaseId}/deploying")
+    @PreAuthorize("hasRole('OPERATOR')")
+    ReleaseResponse deploying(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.deploying(releaseId));
+    }
+
+    @PostMapping("/releases/{releaseId}/deployed")
+    @PreAuthorize("hasRole('OPERATOR')")
+    ReleaseResponse deployed(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.deployed(releaseId));
+    }
+
+    @PostMapping("/releases/{releaseId}/degraded")
+    @PreAuthorize("hasRole('OPERATOR')")
+    ReleaseResponse degraded(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.degraded(releaseId));
+    }
+
+    @PostMapping("/releases/{releaseId}/failed")
+    @PreAuthorize("hasRole('OPERATOR')")
+    ReleaseResponse failed(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.failed(releaseId));
+    }
+
+    @PostMapping("/releases/{releaseId}/reject")
+    @PreAuthorize("hasRole('REVIEWER')")
+    ReleaseResponse reject(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.reject(releaseId));
+    }
+
+    @PostMapping("/releases/{releaseId}/revoke")
+    @PreAuthorize("hasRole('OPERATOR')")
+    ReleaseResponse revoke(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.revoke(releaseId));
+    }
+
     @GetMapping("/audit-events")
+    @PreAuthorize("hasAnyRole('OWNER', 'REVIEWER', 'APPROVER', 'OPERATOR', 'READ_ONLY')")
     List<AuditEvent> auditEvents() {
         return service.auditEvents();
     }
@@ -66,10 +110,7 @@ public class GovernanceController {
     record CreateCapabilityRequest(@NotBlank String name, @NotBlank String department, CapabilityType type) {
     }
 
-    record CreateReleaseRequest(@NotBlank String version, @NotBlank String digest) {
-    }
-
-    record ApproveReleaseRequest(@NotBlank String actor, @NotBlank String digest) {
+    record CreateReleaseRequest(@NotBlank String version, @NotBlank String artifactReference) {
     }
 
     record CapabilityResponse(String id, String department, CapabilityType type) {
@@ -78,9 +119,9 @@ public class GovernanceController {
         }
     }
 
-    record ReleaseResponse(String capabilityId, String version, String digest, ReleaseState state) {
+    record ReleaseResponse(String capabilityId, String version, String artifactReference, String digest, ReleaseState state) {
         static ReleaseResponse from(Release release) {
-            return new ReleaseResponse(release.capabilityId(), release.version(), release.digest(), release.state());
+            return new ReleaseResponse(release.capabilityId(), release.version(), release.artifactReference(), release.digest(), release.state());
         }
     }
 }

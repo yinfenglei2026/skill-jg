@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: azure/setup-kubectl@v4
+      - name: Verify control plane
+        run: ./mvnw -B -pl apps/control-plane verify
+      - name: Verify portal view model
+        working-directory: apps/portal
+        run: |
+          npm ci
+          npm test
+      - name: Render Kubernetes manifests
+        run: kubectl kustomize infra/k8s/base > /dev/null
