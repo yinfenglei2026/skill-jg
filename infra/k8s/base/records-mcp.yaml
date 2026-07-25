@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: records-mcp
+  namespace: capability-customer-operations
+  labels:
+    governance.example.io/capability: records-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      governance.example.io/release: records-mcp-1.0.0
+  template:
+    metadata:
+      labels:
+        governance.example.io/release: records-mcp-1.0.0
+    spec:
+      runtimeClassName: gvisor
+      serviceAccountName: capability-runtime
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: mcp
+          image: registry.platform.local/capabilities/records-mcp@sha256:0f33333333333333333333333333333333333333333333333333333333333333
+          ports:
+            - name: mcp
+              containerPort: 8080
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          readinessProbe:
+            httpGet: { path: /healthz, port: mcp }
+          livenessProbe:
+            httpGet: { path: /healthz, port: mcp }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: records-mcp
+  namespace: capability-customer-operations
+spec:
+  selector:
+    governance.example.io/release: records-mcp-1.0.0
+  ports:
+    - name: mcp
+      port: 8080
+      targetPort: mcp

@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: support-agent-run-example
+  namespace: capability-customer-operations
+  labels:
+    governance.example.io/capability: support-agent
+    governance.example.io/release: support-agent-1.0.0
+    governance.example.io/digest: sha256-0f22222222222222222222222222222222222222222222222222222222222222
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        governance.example.io/release: support-agent-1.0.0
+    spec:
+      runtimeClassName: gvisor
+      restartPolicy: Never
+      serviceAccountName: capability-runtime
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: agent
+          image: registry.platform.local/capabilities/support-agent@sha256:0f22222222222222222222222222222222222222222222222222222222222222
+          command: ["/opt/platform/bin/agent-runner"]
+          args: ["--input", "/platform/input/request.json", "--output", "/platform/output/result.json"]
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: platform-workspace
+              mountPath: /platform
+      volumes:
+        - name: platform-workspace
+          emptyDir: {}

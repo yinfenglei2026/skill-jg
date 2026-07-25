@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - control-plane.yaml
+  - runtime-rbac.yaml
+  - runtime-network.yaml
+  - support-agent-job.yaml
+  - records-mcp.yaml

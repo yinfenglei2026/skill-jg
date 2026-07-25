@@ -39,9 +39,9 @@ The React Portal talks only to the control plane. Runtime workloads receive shor
 
 ## Repository Conventions
 
-- `apps/server`: Spring Boot control plane (to be implemented).
-- `apps/portal`: React governance Portal (to be implemented).
-- `deploy`: K3s, GitOps and local dependency declarations (to be implemented).
+- `apps/control-plane`: Spring Boot governance API and release-state domain.
+- `apps/portal`: operator Portal source and dependency-free PoC view.
+- `infra/k8s`: K3s runtime, namespace and NetworkPolicy manifests.
 - `docs`: architecture, capability contract and implementation plan.
 - `capability.yaml`: capability package entry manifest; see [`docs/capability-schema.md`](docs/capability-schema.md).
 - Secrets must not be committed. Local/generated Kubernetes secret material, kubeconfig files and local `.env` files are ignored; ordinary declarative Secret references remain reviewable.
@@ -56,16 +56,12 @@ The React Portal talks only to the control plane. Runtime workloads receive shor
 
 K3s itself may run on Linux VMs or nodes. The two-node topology is for failure-path demonstration only and is **not highly available**.
 
-## Verify the Foundation
+## Verify the PoC
 
 Run from the repository root:
 
 ```powershell
-git diff --check
-$required = @('README.md', 'docs/architecture.md', 'docs/capability-schema.md', 'docs/implementation-plan.md', '.gitignore')
-$required | ForEach-Object { if (-not (Test-Path $_) -or (Get-Item $_).Length -eq 0) { throw "Missing or empty: $_" } }
-rg '^## (PoC Scope|Non-goals|Architecture Planes|Local Prerequisites|Verify the Foundation)$' README.md
-rg '^## (Control Plane|Supply Chain|Runtime Plane|Model Gateway|Security Boundaries|Release State Machine|Failure Semantics|PoC-to-Production Topology Gap)$' docs/architecture.md
+.\scripts\verify.ps1
 ```
 
-As code is introduced, each implementation track must add its own build and test command to the root verification entry point. No production-readiness claim may be derived from passing the document-stage checks above.
+The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. Do not interpret passing local checks as a production-readiness claim.

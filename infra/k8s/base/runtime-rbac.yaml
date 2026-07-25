@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: capability-runtime
+  namespace: capability-customer-operations
+  labels:
+    governance.example.io/role: runtime
+automountServiceAccountToken: false

@@ -1,0 +1,56 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: capability-customer-operations
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: support-agent-approved-egress
+  namespace: capability-customer-operations
+spec:
+  podSelector:
+    matchLabels:
+      governance.example.io/release: support-agent-1.0.0
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: governance-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: model-gateway
+      ports:
+        - protocol: TCP
+          port: 8443
+    - to:
+        - podSelector:
+            matchLabels:
+              governance.example.io/release: records-mcp-1.0.0
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: records-mcp-approved-ingress
+  namespace: capability-customer-operations
+spec:
+  podSelector:
+    matchLabels:
+      governance.example.io/release: records-mcp-1.0.0
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              governance.example.io/release: support-agent-1.0.0
+      ports:
+        - protocol: TCP
+          port: 8080
