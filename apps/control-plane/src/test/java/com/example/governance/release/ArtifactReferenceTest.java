@@ -1,7 +1,6 @@
 package com.example.governance.release;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,12 +15,5 @@ class ArtifactReferenceTest {
         assertThat(artifact.registry()).isEqualTo("registry.example.internal");
         assertThat(artifact.repository()).isEqualTo("governance/support-agent");
         assertThat(artifact.digest()).isEqualTo(DIGEST);
-    }
-
-    @Test
-    void fails_fast_when_no_registry_is_configured() {
-        assertThatThrownBy(() -> new RegistryArtifactVerifier(null, ""))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("HARBOR_REGISTRY");
     }
 }

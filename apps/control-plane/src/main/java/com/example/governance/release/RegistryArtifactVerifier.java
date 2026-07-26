@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ public class RegistryArtifactVerifier implements ArtifactVerifier {
     private final HttpClient client;
     private final String allowedRegistry;
 
+    @Autowired
     public RegistryArtifactVerifier(@Value("${governance.artifact-verification.allowed-registry:}") String allowedRegistry) {
         this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(), allowedRegistry);
     }
