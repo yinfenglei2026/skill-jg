@@ -10,7 +10,7 @@ export type OidcSession = Pick<
   UserManager,
   'getUser' | 'signinRedirect' | 'signinRedirectCallback' | 'signoutRedirect'
 > & {
-  events: Pick<UserManager['events'], 'addAccessTokenExpired'>;
+  events: Pick<UserManager['events'], 'addAccessTokenExpired' | 'removeAccessTokenExpired'>;
 };
 
 export type PortalUser = User;

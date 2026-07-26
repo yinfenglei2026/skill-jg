@@ -16,7 +16,8 @@ export type AuthSession = {
   signinRedirectCallback(): Promise<PortalUser>;
   signoutRedirect(): Promise<void>;
   events: {
-    addAccessTokenExpired(callback: () => void): () => void;
+    addAccessTokenExpired(callback: () => void): void;
+    removeAccessTokenExpired(callback: () => void): void;
   };
 };
 
@@ -102,13 +103,14 @@ export function App({ authSession, api }: AppProps) {
       }
     };
     void load();
-    const removeExpiredHandler = authSession.events.addAccessTokenExpired(() => {
+    const onExpired = () => {
       setUser(null);
       setCatalogState('signed-out');
-    });
+    };
+    authSession.events.addAccessTokenExpired(onExpired);
     return () => {
       active = false;
-      removeExpiredHandler();
+      authSession.events.removeAccessTokenExpired(onExpired);
     };
   }, [api, authSession]);
 

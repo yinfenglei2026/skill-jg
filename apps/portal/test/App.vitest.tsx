@@ -13,7 +13,10 @@ function authSession(user: AuthSession['getUser'] extends () => Promise<infer T>
     signinRedirect: vi.fn().mockResolvedValue(undefined),
     signinRedirectCallback: vi.fn(),
     signoutRedirect: vi.fn().mockResolvedValue(undefined),
-    events: { addAccessTokenExpired: vi.fn().mockReturnValue(() => undefined) }
+    events: {
+      addAccessTokenExpired: vi.fn(),
+      removeAccessTokenExpired: vi.fn()
+    }
   };
 }
 
@@ -77,5 +80,19 @@ describe('portal workflow', () => {
   it('renders an explicit empty catalog state', async () => {
     render(<App authSession={authSession(user)} api={api()} />);
     expect(await screen.findByText('No capabilities are registered for your department.')).toBeTruthy();
+  });
+
+  it('unregisters the access-token expiration handler on unmount', async () => {
+    const session = authSession(user);
+    const { unmount } = render(<App authSession={session} api={api()} />);
+
+    expect(await screen.findByText('No capabilities are registered for your department.')).toBeTruthy();
+    const addAccessTokenExpired = vi.mocked(session.events.addAccessTokenExpired);
+    expect(addAccessTokenExpired).toHaveBeenCalledOnce();
+    const [onExpired] = addAccessTokenExpired.mock.calls[0];
+
+    unmount();
+
+    expect(session.events.removeAccessTokenExpired).toHaveBeenCalledWith(onExpired);
   });
 });
