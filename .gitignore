@@ -46,6 +46,7 @@ k8s/**/*.secrets.generated.yaml
 *.secrets.local.yaml
 
 # IDE / editor
+.worktrees/
 .idea/
 .vscode/
 *.iml
