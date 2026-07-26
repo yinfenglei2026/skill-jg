@@ -88,17 +88,11 @@ With the control plane running, verify the complete Keycloak-to-Spring JWT path 
 .\scripts\smoke-local-auth.ps1
 ```
 
-To run the browser portal against the same local services, create `apps/portal/.env` from these loopback values and start Vite:
-
-```text
-VITE_GOVERNANCE_API_BASE_URL=http://localhost:8080/api/v1
-VITE_GOVERNANCE_OIDC_AUTHORITY=http://localhost:8081/realms/governance
-VITE_GOVERNANCE_OIDC_CLIENT_ID=governance-portal
-VITE_GOVERNANCE_OIDC_REDIRECT_URI=http://localhost:5173
-```
+To run the browser portal against the same local services, create its local Vite environment from the checked-in example and start Vite:
 
 ```powershell
 Set-Location apps/portal
+Copy-Item .env.example .env.local
 npm ci
 npm run dev -- --host localhost
 ```
