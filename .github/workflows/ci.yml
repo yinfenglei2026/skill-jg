@@ -27,3 +27,16 @@ jobs:
           npm test
       - name: Render Kubernetes manifests
         run: kubectl kustomize infra/k8s/base > /dev/null
+      - name: Validate local dependency declarations
+        env:
+          POSTGRES_ADMIN_USERNAME: verify-admin
+          POSTGRES_ADMIN_PASSWORD: verify-admin-password
+          GOVERNANCE_DB_USERNAME: verify-governance
+          GOVERNANCE_DB_PASSWORD: verify-governance-password
+          KEYCLOAK_DB_USERNAME: verify-keycloak
+          KEYCLOAK_DB_PASSWORD: verify-keycloak-password
+          KEYCLOAK_ADMIN_USERNAME: verify-admin
+          KEYCLOAK_ADMIN_PASSWORD: verify-keycloak-admin-password
+        run: |
+          docker compose config > /dev/null
+          jq empty infra/local/keycloak/realm-governance.json

@@ -1,0 +1,52 @@
+{
+  "realm": "governance",
+  "enabled": true,
+  "displayName": "Governance Local Development",
+  "roles": {
+    "realm": [
+      { "name": "owner" },
+      { "name": "reviewer" },
+      { "name": "approver" },
+      { "name": "operator" },
+      { "name": "read-only" }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "governance-department",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "defaultDefaultClientScopes": [
+    "profile",
+    "email",
+    "roles",
+    "governance-department"
+  ],
+  "clients": [
+    {
+      "clientId": "governance-portal",
+      "name": "Governance Portal Local Development",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:5173/*"],
+      "webOrigins": ["http://localhost:5173"]
+    }
+  ]
+}

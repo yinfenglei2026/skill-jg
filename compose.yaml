@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16.4-alpine}
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USERNAME:?set POSTGRES_ADMIN_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD}
+      GOVERNANCE_DB_USERNAME: ${GOVERNANCE_DB_USERNAME:?set GOVERNANCE_DB_USERNAME}
+      GOVERNANCE_DB_PASSWORD: ${GOVERNANCE_DB_PASSWORD:?set GOVERNANCE_DB_PASSWORD}
+      KEYCLOAK_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:?set KEYCLOAK_DB_USERNAME}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/local/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=$$POSTGRES_USER --dbname=postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.0.7}
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?set KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:?set KEYCLOAK_DB_USERNAME}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./infra/local/keycloak/realm-governance.json:/opt/keycloak/data/import/realm-governance.json:ro
+
+volumes:
+  postgres_data:

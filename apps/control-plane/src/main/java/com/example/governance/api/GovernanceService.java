@@ -6,6 +6,7 @@ import com.example.governance.capability.Capability;
 import com.example.governance.capability.CapabilityRepository;
 import com.example.governance.capability.CapabilityType;
 import com.example.governance.release.ArtifactReference;
+import com.example.governance.release.ArtifactVerifier;
 import com.example.governance.release.Release;
 import com.example.governance.release.ReleaseRepository;
 import com.example.governance.security.Actor;
@@ -14,6 +15,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,18 +26,21 @@ public class GovernanceService {
     private final ReleaseRepository releases;
     private final AuditEventRepository auditEvents;
     private final CurrentActor currentActor;
+    private final ArtifactVerifier artifactVerifier;
 
+    @Autowired
     public GovernanceService(CapabilityRepository capabilities, ReleaseRepository releases,
-                             AuditEventRepository auditEvents, CurrentActor currentActor) {
-        this(capabilities, releases, auditEvents, currentActor, Clock.systemUTC());
+                             AuditEventRepository auditEvents, CurrentActor currentActor, ArtifactVerifier artifactVerifier) {
+        this(capabilities, releases, auditEvents, currentActor, artifactVerifier, Clock.systemUTC());
     }
 
     GovernanceService(CapabilityRepository capabilities, ReleaseRepository releases,
-                      AuditEventRepository auditEvents, CurrentActor currentActor, Clock clock) {
+                      AuditEventRepository auditEvents, CurrentActor currentActor, ArtifactVerifier artifactVerifier, Clock clock) {
         this.capabilities = capabilities;
         this.releases = releases;
         this.auditEvents = auditEvents;
         this.currentActor = currentActor;
+        this.artifactVerifier = artifactVerifier;
         this.clock = clock;
     }
 
@@ -55,6 +60,7 @@ public class GovernanceService {
         Capability capability = requireCapability(capabilityId);
         requireDepartment(actor, capability.department());
         ArtifactReference artifact = ArtifactReference.parse(artifactReference);
+        artifactVerifier.verify(artifact);
         Release release = Release.draft(capabilityId, version, artifact.value(), artifact.digest(), now());
         releases.save(release);
         audit(actor, "RELEASE_REGISTERED", releaseId(capabilityId, version), "ALLOW", release.digest());
@@ -115,6 +121,36 @@ public class GovernanceService {
     public List<AuditEvent> auditEvents() {
         Actor actor = currentActor.require();
         return auditEvents.findByDepartmentOrderByOccurredAtAsc(actor.department());
+    }
+
+    @Transactional(readOnly = true)
+    public List<Capability> capabilities() {
+        Actor actor = currentActor.require();
+        return capabilities.findByDepartmentOrderByIdAsc(actor.department());
+    }
+
+    @Transactional(readOnly = true)
+    public Capability capability(String capabilityId) {
+        Actor actor = currentActor.require();
+        Capability capability = requireCapability(capabilityId);
+        requireDepartment(actor, capability.department());
+        return capability;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Release> releases(String capabilityId) {
+        Actor actor = currentActor.require();
+        Capability capability = requireCapability(capabilityId);
+        requireDepartment(actor, capability.department());
+        return releases.findByCapabilityIdOrderByCreatedAtDesc(capabilityId);
+    }
+
+    @Transactional(readOnly = true)
+    public Release release(String releaseId) {
+        Actor actor = currentActor.require();
+        Release release = requireRelease(releaseId);
+        requireDepartment(actor, requireCapability(release.capabilityId()).department());
+        return release;
     }
 
     private Release transition(String releaseId, String action, String decision,

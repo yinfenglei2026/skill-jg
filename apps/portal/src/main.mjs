@@ -1,6 +1,4 @@
 import { toReleaseViewModel } from './release-view-model.mjs';
-
-const apiBase = window.GOVERNANCE_API_BASE ?? 'http://localhost:8080/api/v1';
 const release = toReleaseViewModel({
   capabilityId: 'support-agent',
   version: '1.0.0',
@@ -15,22 +13,4 @@ releaseElement.innerHTML = `
   <code>${release.digest}</code>
 `;
 
-async function loadAuditEvents() {
-  const target = document.querySelector('[data-audit]');
-  try {
-    const response = await fetch(`${apiBase}/audit-events`);
-    if (!response.ok) {
-      throw new Error(`Audit API returned ${response.status}`);
-    }
-    const events = await response.json();
-    target.replaceChildren(...events.map((event) => {
-      const item = document.createElement('li');
-      item.textContent = `${event.action} ${event.subject} ${event.digest ?? ''}`.trim();
-      return item;
-    }));
-  } catch (error) {
-    target.textContent = `Audit events unavailable: ${error.message}`;
-  }
-}
-
-loadAuditEvents();
+document.querySelector('[data-audit]').textContent = 'Audit events are available after portal sign-in.';

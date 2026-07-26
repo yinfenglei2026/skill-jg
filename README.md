@@ -66,6 +66,20 @@ Run from the repository root:
 
 The script uses the checked-in Maven Wrapper rather than a machine-specific Maven installation. Its first run needs access to Maven Central. The control plane defaults to PostgreSQL; export the variables documented in [`.env.example`](.env.example) before running it outside the test profile. The test profile uses H2 only for automated tests.
 
+For local PostgreSQL and Keycloak dependencies, create a local `.env` from the documented variable names and run:
+
+```powershell
+docker compose up -d postgres keycloak
+```
+
+The imported `governance` realm has the five platform roles and maps the Keycloak user attribute `department` into access tokens. It intentionally creates no users or credentials; create local test users through the Keycloak administration console.
+
+For a local control-plane process after replacing the `.env` placeholders, run:
+
+```powershell
+.\scripts\start-local.ps1
+```
+
 The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. CI installs the locked dependency graph and runs Vitest. Do not interpret passing local checks as a production-readiness claim.
 
 ## Control Plane Security
@@ -80,4 +94,4 @@ All control-plane API routes require a JWT except Kubernetes health probes. Keyc
 | `OPERATOR` | Register immutable OCI releases, publish, revoke and report deployment state |
 | `READ_ONLY` | Read department-scoped audit events |
 
-Release registration accepts only `oci://...@sha256:<64 hex>` references and derives the stored digest from that reference. The caller must be an authenticated `OPERATOR`, normally a CI service identity. Registry existence and signature/provenance verification remain a required next integration; this repository does not yet claim that an OCI digest has been independently verified.
+Release registration accepts only `oci://...@sha256:<64 hex>` references and derives the stored digest from that reference. The caller must be an authenticated `OPERATOR`, normally a CI service identity. Outside the test profile, startup fails if `HARBOR_REGISTRY` is unset. The control plane then sends a manifest `HEAD` request to the configured allowlisted registry and rejects the release unless `Docker-Content-Digest` exactly matches the requested digest. Harbor authentication and Cosign signature/provenance verification remain required next integrations; this repository does not yet claim that an OCI digest has a verified signature.

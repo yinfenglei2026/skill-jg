@@ -41,6 +41,30 @@ public class GovernanceController {
         return ReleaseResponse.from(service.createRelease(capabilityId, request.version(), request.artifactReference()));
     }
 
+    @GetMapping("/capabilities")
+    @PreAuthorize("hasAnyRole('OWNER', 'REVIEWER', 'APPROVER', 'OPERATOR', 'READ_ONLY')")
+    List<CapabilityResponse> capabilities() {
+        return service.capabilities().stream().map(CapabilityResponse::from).toList();
+    }
+
+    @GetMapping("/capabilities/{capabilityId}")
+    @PreAuthorize("hasAnyRole('OWNER', 'REVIEWER', 'APPROVER', 'OPERATOR', 'READ_ONLY')")
+    CapabilityResponse capability(@PathVariable String capabilityId) {
+        return CapabilityResponse.from(service.capability(capabilityId));
+    }
+
+    @GetMapping("/capabilities/{capabilityId}/releases")
+    @PreAuthorize("hasAnyRole('OWNER', 'REVIEWER', 'APPROVER', 'OPERATOR', 'READ_ONLY')")
+    List<ReleaseResponse> releases(@PathVariable String capabilityId) {
+        return service.releases(capabilityId).stream().map(ReleaseResponse::from).toList();
+    }
+
+    @GetMapping("/releases/{releaseId}")
+    @PreAuthorize("hasAnyRole('OWNER', 'REVIEWER', 'APPROVER', 'OPERATOR', 'READ_ONLY')")
+    ReleaseResponse release(@PathVariable String releaseId) {
+        return ReleaseResponse.from(service.release(releaseId));
+    }
+
     @PostMapping("/releases/{releaseId}/validate")
     @PreAuthorize("hasRole('REVIEWER')")
     ReleaseResponse validate(@PathVariable String releaseId) {
@@ -119,9 +143,9 @@ public class GovernanceController {
         }
     }
 
-    record ReleaseResponse(String capabilityId, String version, String artifactReference, String digest, ReleaseState state) {
+    record ReleaseResponse(String id, String capabilityId, String version, String artifactReference, String digest, ReleaseState state) {
         static ReleaseResponse from(Release release) {
-            return new ReleaseResponse(release.capabilityId(), release.version(), release.artifactReference(), release.digest(), release.state());
+            return new ReleaseResponse(release.id(), release.capabilityId(), release.version(), release.artifactReference(), release.digest(), release.state());
         }
     }
 }

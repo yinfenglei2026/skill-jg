@@ -7,6 +7,7 @@ import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
@@ -47,7 +48,7 @@ public class Release {
     @Embedded
     private ReleaseApproval approval;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "release_transitions", joinColumns = @JoinColumn(name = "release_id"))
     @OrderColumn(name = "transition_order")
     private List<ReleaseTransition> transitions = new ArrayList<>();
@@ -116,6 +117,10 @@ public class Release {
 
     public ReleaseState state() {
         return state;
+    }
+
+    public String id() {
+        return id;
     }
 
     public ReleaseApproval approval() {

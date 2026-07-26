@@ -104,9 +104,138 @@ class GovernanceApiTest {
                 .andExpect(jsonPath("$.code").value("INVALID_ARTIFACT_REFERENCE"));
     }
 
+    @Test
+    void rejects_a_role_holder_from_a_different_department() throws Exception {
+        mockMvc.perform(post("/api/v1/capabilities")
+                        .with(as("OWNER", "owner@example.internal"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" + "\"name\":\"cross-department-agent\",\"department\":\"customer-operations\",\"type\":\"AGENT\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/capabilities/cross-department-agent/releases")
+                        .with(as("OPERATOR", "operator@example.internal", "finance"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":\"1.0.0\",\"artifactReference\":\"%s\"}".formatted(ARTIFACT)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void lists_and_gets_catalog_records_only_within_the_jwt_department() throws Exception {
+        mockMvc.perform(post("/api/v1/capabilities")
+                        .with(as("OWNER", "owner@example.internal"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" + "\"name\":\"catalog-agent\",\"department\":\"customer-operations\",\"type\":\"AGENT\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/capabilities/catalog-agent/releases")
+                        .with(as("OPERATOR", "release-bot@example.internal"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":\"1.0.0\",\"artifactReference\":\"%s\"}".formatted(ARTIFACT)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/capabilities")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value("catalog-agent"));
+        mockMvc.perform(get("/api/v1/capabilities/catalog-agent")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.department").value("customer-operations"));
+        mockMvc.perform(get("/api/v1/capabilities/catalog-agent/releases")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value("catalog-agent:1.0.0"))
+                .andExpect(jsonPath("$[0].state").value("DRAFT"));
+        mockMvc.perform(get("/api/v1/releases/catalog-agent:1.0.0")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("catalog-agent:1.0.0"));
+
+        mockMvc.perform(get("/api/v1/capabilities")
+                        .with(as("READ_ONLY", "finance-reader@example.internal", "finance")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        mockMvc.perform(get("/api/v1/capabilities/catalog-agent")
+                        .with(as("READ_ONLY", "finance-reader@example.internal", "finance")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/releases/catalog-agent:1.0.0")
+                        .with(as("READ_ONLY", "finance-reader@example.internal", "finance")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void records_deployment_failure_and_allows_a_retry() throws Exception {
+        createPublishedRelease();
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("DEPLOYING"));
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployed")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("DEPLOYED"));
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/degraded")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("DEGRADED"));
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/failed")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("FAILED"));
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("DEPLOYING"));
+    }
+
+    @Test
+    void refuses_to_deploy_a_revoked_release() throws Exception {
+        createPublishedRelease();
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/revoke")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("REVOKED"));
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
+                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_RELEASE_TRANSITION"));
+    }
+
+    private void createPublishedRelease() throws Exception {
+        mockMvc.perform(post("/api/v1/capabilities")
+                        .with(as("OWNER", "owner@example.internal"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" + "\"name\":\"support-agent\",\"department\":\"customer-operations\",\"type\":\"AGENT\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/capabilities/support-agent/releases")
+                        .with(as("OPERATOR", "release-bot@example.internal"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":\"1.0.0\",\"artifactReference\":\"%s\"}".formatted(ARTIFACT)))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/validate")
+                        .with(as("REVIEWER", "reviewer@example.internal")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/review-required")
+                        .with(as("REVIEWER", "reviewer@example.internal")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/approve")
+                        .with(as("APPROVER", "approver@example.internal")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/publish")
+                        .with(as("OPERATOR", "release-bot@example.internal")))
+                .andExpect(status().isOk());
+    }
+
     private static JwtRequestPostProcessor as(String role, String subject) {
+        return as(role, subject, "customer-operations");
+    }
+
+    private static JwtRequestPostProcessor as(String role, String subject, String department) {
         return jwt()
-                .jwt(token -> token.subject(subject).claim("department", "customer-operations"))
+                .jwt(token -> token.subject(subject).claim("department", department))
                 .authorities(new SimpleGrantedAuthority("ROLE_" + role));
     }
 }
