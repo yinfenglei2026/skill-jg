@@ -33,7 +33,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Push-Location (Join-Path $repositoryRoot 'apps/portal')
 try {
-    node --test test/release-view-model.test.mjs
+    node --test test/*.test.mjs
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }

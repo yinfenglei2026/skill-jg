@@ -45,8 +45,20 @@
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
       "redirectUris": ["http://localhost:5173/*"],
       "webOrigins": ["http://localhost:5173"]
+    },
+    {
+      "clientId": "governance-smoke",
+      "name": "Governance Local Authentication Smoke Test",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
     }
   ]
 }
