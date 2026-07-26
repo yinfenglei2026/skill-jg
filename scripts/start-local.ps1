@@ -70,5 +70,10 @@ for ($attempt = 1; $attempt -le 30; $attempt++) {
     }
 }
 
+& (Join-Path $PSScriptRoot 'provision-local-identities.ps1')
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
 & $maven -pl apps/control-plane spring-boot:run
 exit $LASTEXITCODE

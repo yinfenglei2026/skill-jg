@@ -31,6 +31,11 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+& (Join-Path $PSScriptRoot 'test-local-identity.ps1')
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
 Push-Location (Join-Path $repositoryRoot 'apps/portal')
 try {
     node --test test/*.test.mjs

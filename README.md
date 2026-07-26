@@ -72,12 +72,20 @@ For local PostgreSQL and Keycloak dependencies, create a local `.env` from the d
 docker compose up -d postgres keycloak
 ```
 
-The imported `governance` realm has the five platform roles and maps the Keycloak user attribute `department` into access tokens. It intentionally creates no users or credentials; create local test users through the Keycloak administration console.
+The imported `governance` realm has the five platform roles and maps the Keycloak user attribute `department` into access tokens. The realm import contains no users or credentials; local synthetic users are provisioned from environment values by the start script.
+
+For repeatable local authentication tests, set `KEYCLOAK_TEST_USER_PASSWORD` in `.env`. The local start script idempotently provisions six synthetic `*.test` users across `customer-operations` and `billing`; it never imports real users or credentials. The `governance-portal` client uses Authorization Code with PKCE. A separate `governance-smoke` client enables Direct Access Grants only for this isolated local realm.
 
 For a local control-plane process after replacing the `.env` placeholders, run:
 
 ```powershell
 .\scripts\start-local.ps1
+```
+
+With the control plane running, verify the complete Keycloak-to-Spring JWT path without printing the token:
+
+```powershell
+.\scripts\smoke-local-auth.ps1
 ```
 
 The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. CI installs the locked dependency graph and runs Vitest. Do not interpret passing local checks as a production-readiness claim.
