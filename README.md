@@ -88,6 +88,23 @@ With the control plane running, verify the complete Keycloak-to-Spring JWT path 
 .\scripts\smoke-local-auth.ps1
 ```
 
+To run the browser portal against the same local services, create `apps/portal/.env` from these loopback values and start Vite:
+
+```text
+VITE_GOVERNANCE_API_BASE_URL=http://localhost:8080/api/v1
+VITE_GOVERNANCE_OIDC_AUTHORITY=http://localhost:8081/realms/governance
+VITE_GOVERNANCE_OIDC_CLIENT_ID=governance-portal
+VITE_GOVERNANCE_OIDC_REDIRECT_URI=http://localhost:5173
+```
+
+```powershell
+Set-Location apps/portal
+npm ci
+npm run dev -- --host localhost
+```
+
+The portal uses Authorization Code with PKCE in the browser and does not contain a direct-grant login path. The direct-grant `governance-smoke` client is reserved for the local PowerShell smoke script.
+
 The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. CI installs the locked dependency graph and runs Vitest. Do not interpret passing local checks as a production-readiness claim.
 
 ## Control Plane Security
