@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Capability, GovernanceApi, Release } from './governance-api';
 
 export type PortalUser = {
@@ -59,6 +59,7 @@ export function App({ authSession, api }: AppProps) {
   const [releaseState, setReleaseState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [releaseError, setReleaseError] = useState<Error | null>(null);
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
+  const callbackPromise = useRef<Promise<PortalUser> | null>(null);
 
   const department = typeof user?.profile.department === 'string' ? user.profile.department : 'Department unavailable';
   const selectedCapability = useMemo(
@@ -75,9 +76,13 @@ export function App({ authSession, api }: AppProps) {
     const params = new URLSearchParams(window.location.search);
     const load = async () => {
       try {
-        const nextUser = params.has('code') && params.has('state')
-          ? await authSession.signinRedirectCallback()
-          : await authSession.getUser();
+        let nextUser: PortalUser | null;
+        if (params.has('code') && params.has('state')) {
+          callbackPromise.current ??= authSession.signinRedirectCallback();
+          nextUser = await callbackPromise.current;
+        } else {
+          nextUser = await authSession.getUser();
+        }
         if (!active) return;
         if (!nextUser) {
           setCatalogState('signed-out');
