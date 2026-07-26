@@ -1,4 +1,16 @@
-const labels = {
+export type ReleaseViewInput = {
+  capabilityId: string;
+  version: string;
+  digest: string;
+  state: string;
+};
+
+export type ReleaseViewModel = ReleaseViewInput & {
+  title: string;
+  statusLabel: string;
+};
+
+const labels: Record<string, string> = {
   DRAFT: 'Draft',
   VALIDATING: 'Validation running',
   REVIEW_REQUIRED: 'Review required',
@@ -12,11 +24,10 @@ const labels = {
   REVOKED: 'Revoked'
 };
 
-export function toReleaseViewModel(release) {
+export function toReleaseViewModel(release: ReleaseViewInput): ReleaseViewModel {
   return {
+    ...release,
     title: `${release.capabilityId}@${release.version}`,
-    digest: release.digest,
-    state: release.state,
     statusLabel: labels[release.state] ?? 'Unknown state'
   };
 }

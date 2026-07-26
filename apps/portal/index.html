@@ -3,20 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Governance Operator Portal</title>
-    <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 64rem; color: #17212b; }
-      main { display: grid; gap: 1.5rem; }
-      section { border: 1px solid #cbd5e1; border-radius: 6px; padding: 1rem; }
-      code { display: block; overflow-wrap: anywhere; background: #f1f5f9; padding: .75rem; }
-    </style>
+    <title>Governance Portal</title>
   </head>
   <body>
-    <main>
-      <header><h1>AI Capability Governance</h1><p>Release identity and audit evidence</p></header>
-      <section data-release aria-label="Release identity"></section>
-      <section><h2>Audit events</h2><ul data-audit aria-live="polite"></ul></section>
-    </main>
-    <script type="module" src="/src/main.mjs"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
