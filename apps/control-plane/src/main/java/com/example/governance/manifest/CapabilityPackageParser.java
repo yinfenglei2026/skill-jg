@@ -78,6 +78,14 @@ public final class CapabilityPackageParser {
     private static final Set<String> SECRET_FIELDS = Set.of("name", "ref", "mount");
     private static final Set<String> SECRET_REF_FIELDS = Set.of("provider", "key", "version");
     private static final Set<String> SECRET_MOUNT_FIELDS = Set.of("type", "path", "variable");
+    private static final Set<String> RESOURCE_FIELDS = Set.of("requests", "limits");
+    private static final Set<String> RESOURCE_QUANTITY_FIELDS = Set.of("cpu", "memory");
+    private static final Set<String> HEALTH_FIELDS = Set.of("startup", "readiness", "liveness");
+    private static final Set<String> HEALTH_PROBE_FIELDS = Set.of(
+            "httpGet", "failureThreshold", "periodSeconds", "timeoutSeconds");
+    private static final Set<String> HEALTH_HTTP_GET_FIELDS = Set.of("path", "port");
+    private static final List<String> HEALTH_PROBE_OPTIONS = List.of(
+            "failureThreshold", "periodSeconds", "timeoutSeconds");
     private static final LoaderOptions YAML_LOADER_OPTIONS = yamlLoaderOptions();
 
     private final ObjectMapper yamlMapper = new ObjectMapper(yamlFactory());
@@ -103,10 +111,7 @@ public final class CapabilityPackageParser {
         ObjectNode metadataNode = object(root, "metadata", "metadata");
         requireOnlyFields(metadataNode, METADATA_FIELDS, "metadata");
         validateLabels(metadataNode);
-        String metadataVersion = text(metadataNode, "version", "metadata.version");
-        if (!SEMVER.matcher(metadataVersion).matches()) {
-            throw invalid("invalid metadata.version");
-        }
+        String metadataVersion = semanticVersion(metadataNode, "version", "metadata.version");
         Metadata metadata = new Metadata(
                 text(metadataNode, "name", "metadata.name"),
                 text(metadataNode, "namespace", "metadata.namespace"),
@@ -190,7 +195,7 @@ public final class CapabilityPackageParser {
             dependencies.add(new DependencyDefinition(
                     text(entry, identityField, "dependency." + identityField),
                     type,
-                    text(entry, "version", "dependency.version"),
+                    semanticVersion(entry, "version", "dependency.version"),
                     digest,
                     importPath));
         }
@@ -277,8 +282,11 @@ public final class CapabilityPackageParser {
 
     private void validateResources(ObjectNode capability) {
         ObjectNode resources = object(capability, "resources", "capability.resources");
+        requireOnlyFields(resources, RESOURCE_FIELDS, "resources");
         ObjectNode requests = object(resources, "requests", "resources.requests");
+        requireOnlyFields(requests, RESOURCE_QUANTITY_FIELDS, "resources.requests");
         ObjectNode limits = object(resources, "limits", "resources.limits");
+        requireOnlyFields(limits, RESOURCE_QUANTITY_FIELDS, "resources.limits");
 
         BigDecimal requestedCpu = cpuQuantity(requests, "cpu", "resources.requests.cpu");
         BigDecimal requestedMemory = memoryQuantity(requests, "memory", "resources.requests.memory");
@@ -337,13 +345,26 @@ public final class CapabilityPackageParser {
 
     private void validateHealth(ObjectNode capability) {
         ObjectNode health = object(capability, "health", "capability.health");
+        requireOnlyFields(health, HEALTH_FIELDS, "health");
         for (String probeName : List.of("startup", "readiness", "liveness")) {
             ObjectNode probe = object(health, probeName, "health." + probeName);
+            requireOnlyFields(probe, HEALTH_PROBE_FIELDS, "health." + probeName);
             ObjectNode httpGet = object(probe, "httpGet", "health." + probeName + ".httpGet");
+            requireOnlyFields(httpGet, HEALTH_HTTP_GET_FIELDS, "health." + probeName + ".httpGet");
             text(httpGet, "path", "health." + probeName + ".httpGet.path");
             if (!isValidPort(httpGet.get("port"))) {
                 throw invalid("health probe port must be an integer between 1 and 65535");
             }
+            for (String option : HEALTH_PROBE_OPTIONS) {
+                validatePositiveInteger(probe, option);
+            }
+        }
+    }
+
+    private void validatePositiveInteger(ObjectNode probe, String field) {
+        JsonNode value = probe.get(field);
+        if (value != null && (!value.isIntegralNumber() || value.bigIntegerValue().signum() <= 0)) {
+            throw invalid("health probe " + field + " must be a positive integer");
         }
     }
 
@@ -588,6 +609,14 @@ public final class CapabilityPackageParser {
             throw invalid("missing required " + path);
         }
         return value;
+    }
+
+    private String semanticVersion(ObjectNode parent, String field, String path) {
+        String version = text(parent, field, path);
+        if (!SEMVER.matcher(version).matches()) {
+            throw invalid("invalid " + path);
+        }
+        return version;
     }
 
     private String optionalText(ObjectNode parent, String field, String path) {

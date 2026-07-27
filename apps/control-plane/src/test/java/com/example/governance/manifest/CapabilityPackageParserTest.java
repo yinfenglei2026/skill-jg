@@ -94,6 +94,29 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void accepts_semver_2_dependency_versions() {
+        CapabilityPackage capabilityPackage = parser.parse(validManifest()
+                .replace("version: 2.3.1", "version: 2.3.1-rc.1+build.7")
+                .replace("version: 3.2.0", "version: 3.2.0-beta.2+sha.abc"));
+
+        assertThat(capabilityPackage.capability("support-agent").dependencies())
+                .extracting(CapabilityPackage.DependencyDefinition::version)
+                .containsExactlyInAnyOrder("2.3.1-rc.1+build.7", "3.2.0-beta.2+sha.abc");
+    }
+
+    @Test
+    void rejects_an_unpinned_capability_dependency_version() {
+        assertInvalid(validManifest().replace("version: 2.3.1", "version: latest"),
+                "invalid dependency.version");
+    }
+
+    @Test
+    void rejects_an_unpinned_skill_dependency_version() {
+        assertInvalid(validManifest().replace("version: 3.2.0", "version: latest"),
+                "invalid dependency.version");
+    }
+
+    @Test
     void rejects_an_invalid_release_digest() {
         assertInvalid(validManifest().replace(RELEASE_DIGEST, "not-a-digest"),
                 "invalid release.digest");
@@ -251,6 +274,83 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_unexpected_resource_fields_at_every_modeled_level() {
+        assertInvalid(validManifest().replace("      resources:\n        requests:",
+                        "      resources:\n        storage: scratch\n        requests:"),
+                "unexpected field in resources");
+        assertInvalid(validManifest().replace("          cpu: 250m\n          memory: 512Mi",
+                        "          cpu: 250m\n          storage: 1Gi\n          memory: 512Mi"),
+                "unexpected field in resources.requests");
+        assertInvalid(validManifest().replace("          cpu: \"1\"\n          memory: 1Gi",
+                        "          cpu: \"1\"\n          storage: 1Gi\n          memory: 1Gi"),
+                "unexpected field in resources.limits");
+    }
+
+    @Test
+    void rejects_unexpected_health_fields_at_every_modeled_level() {
+        assertInvalid(validManifest().replace("      health:\n        startup:",
+                        "      health:\n        gracePeriodSeconds: 10\n        startup:"),
+                "unexpected field in health");
+
+        for (String[] probeAndPath : new String[][] {
+                {"startup", "startup"}, {"readiness", "ready"}, {"liveness", "live"}}) {
+            String probe = probeAndPath[0];
+            String path = probeAndPath[1];
+            assertInvalid(validManifest().replace("        " + probe + ":\n          httpGet:",
+                            "        " + probe + ":\n          successThreshold: 1\n          httpGet:"),
+                    "unexpected field in health." + probe);
+            assertInvalid(validManifest().replace("path: /health/" + path + ", port: 8080",
+                            "path: /health/" + path + ", port: 8080, scheme: HTTP"),
+                    "unexpected field in health." + probe + ".httpGet");
+        }
+    }
+
+    @Test
+    void rejects_blank_and_non_text_health_probe_paths() {
+        assertInvalid(validManifest().replace("path: /health/startup", "path: \"   \""),
+                "missing required health.startup.httpGet.path");
+        assertInvalid(validManifest().replace("path: /health/startup", "path: 42"),
+                "health.startup.httpGet.path must be text");
+    }
+
+    @Test
+    void accepts_health_probe_port_boundaries() {
+        assertThatCode(() -> parser.parse(withProbePort("startup", 1)))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> parser.parse(withProbePort("startup", 65535)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejects_health_probe_ports_outside_the_valid_range() {
+        assertInvalid(withProbePort("startup", 0),
+                "health probe port must be an integer between 1 and 65535");
+        assertInvalid(withProbePort("startup", 65536),
+                "health probe port must be an integer between 1 and 65535");
+        assertInvalid(validManifest().replace("path: /health/startup, port: 8080",
+                        "path: /health/startup, port: 1.5"),
+                "health probe port must be an integer between 1 and 65535");
+    }
+
+    @Test
+    void accepts_positive_integer_health_probe_options() {
+        for (String option : new String[] {"failureThreshold", "periodSeconds", "timeoutSeconds"}) {
+            assertThatCode(() -> parser.parse(withProbeOption("startup", option, "1")))
+                    .doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void rejects_non_positive_or_non_integer_health_probe_options() {
+        for (String option : new String[] {"failureThreshold", "periodSeconds", "timeoutSeconds"}) {
+            assertInvalid(withProbeOption("startup", option, "0"),
+                    "health probe " + option + " must be a positive integer");
+            assertInvalid(withProbeOption("startup", option, "1.5"),
+                    "health probe " + option + " must be a positive integer");
+        }
+    }
+
+    @Test
     void rejects_a_hosted_capability_without_every_health_probe() {
         assertInvalid(validManifest().replace(
                 "        liveness:\n          httpGet: { path: /health/live, port: 8080 }\n", ""),
@@ -388,6 +488,18 @@ class CapabilityPackageParserTest {
         return validManifest()
                 .replace("cpu: 250m", "cpu: " + request)
                 .replace("cpu: \"1\"", "cpu: " + limit);
+    }
+
+    private String withProbePort(String probe, int port) {
+        return validManifest().replace("path: /health/" + probe + ", port: 8080",
+                "path: /health/" + probe + ", port: " + port);
+    }
+
+    private String withProbeOption(String probe, String option, String value) {
+        return validManifest().replace("          httpGet: { path: /health/" + probe
+                        + ", port: 8080 }",
+                "          httpGet: { path: /health/" + probe + ", port: 8080 }\n"
+                        + "          " + option + ": " + value);
     }
 
     private String normativeManifest() {
