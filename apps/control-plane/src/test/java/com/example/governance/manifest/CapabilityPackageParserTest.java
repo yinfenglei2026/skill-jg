@@ -1,6 +1,7 @@
 package com.example.governance.manifest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,17 @@ class CapabilityPackageParserTest {
         assertThat(skill.version()).isEqualTo("3.2.0");
         assertThat(skill.digest()).isEqualTo(SKILL_DIGEST);
         assertThat(skill.importPath()).isEqualTo("skills/support-policy");
+    }
+
+    @Test
+    void parses_the_complete_normative_manifest_and_preserves_documented_subtrees() {
+        CapabilityPackage capabilityPackage = parser.parse(normativeManifest());
+
+        assertThat(capabilityPackage.capabilities()).hasSize(2);
+        assertThat(capabilityPackage.canonicalDocument())
+                .contains("\"entrypoint\"")
+                .contains("\"runtimeProfile\"")
+                .contains("\"tools\"");
     }
 
     @Test
@@ -112,6 +124,17 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_inline_provider_credentials_without_disclosing_them() {
+        String manifest = validManifest().replace("modelPolicies:\n          - general-chat",
+                "modelPolicies:\n          - general-chat\n        openaiApiKey: super-secret");
+
+        assertThatThrownBy(() -> parser.parse(manifest))
+                .isInstanceOf(InvalidCapabilityManifestException.class)
+                .hasMessage("unexpected field in permissions")
+                .hasMessageNotContaining("super-secret");
+    }
+
+    @Test
     void rejects_provider_direct_model_endpoints() {
         assertInvalid(validManifest().replace("model-gateway.platform.svc.cluster.local", "api.openai.com"),
                 "provider-direct model endpoints are forbidden");
@@ -143,6 +166,32 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void accepts_micro_cpu_requests_and_compares_them_to_decimal_cores() {
+        assertThatCode(() -> parser.parse(withCpu("500u", "\"1\"")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void accepts_equivalent_nano_micro_and_milli_cpu_boundaries() {
+        assertThatCode(() -> parser.parse(withCpu("1000n", "1u")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> parser.parse(withCpu("1000u", "1m")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> parser.parse(withCpu("1000m", "\"1\"")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejects_nano_micro_and_milli_cpu_requests_just_above_their_limits() {
+        assertInvalid(withCpu("1001n", "1u"),
+                "resource limit must be greater than or equal to request");
+        assertInvalid(withCpu("1001u", "1m"),
+                "resource limit must be greater than or equal to request");
+        assertInvalid(withCpu("1001m", "\"1\""),
+                "resource limit must be greater than or equal to request");
+    }
+
+    @Test
     void rejects_a_zero_resource_request() {
         assertInvalid(validManifest().replace("cpu: 250m", "cpu: \"0\""),
                 "resource request must be greater than zero");
@@ -152,6 +201,7 @@ class CapabilityPackageParserTest {
     void rejects_an_unsupported_resource_quantity() {
         assertInvalid(validManifest().replace("memory: 512Mi", "memory: 512MB"),
                 "invalid resource quantity");
+        assertInvalid(withCpu("500x", "\"1\""), "invalid resource quantity");
     }
 
     @Test
@@ -227,6 +277,30 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_a_skill_dependency_without_an_import_path() {
+        assertInvalid(validManifest().replace("            importPath: skills/support-policy\n", ""),
+                "invalid dependency.importPath");
+    }
+
+    @Test
+    void rejects_a_null_skill_dependency_import_path() {
+        assertInvalid(validManifest().replace("importPath: skills/support-policy", "importPath:"),
+                "invalid dependency.importPath");
+    }
+
+    @Test
+    void rejects_a_non_text_skill_dependency_import_path() {
+        assertInvalid(validManifest().replace("importPath: skills/support-policy", "importPath: 42"),
+                "invalid dependency.importPath");
+    }
+
+    @Test
+    void rejects_a_blank_skill_dependency_import_path() {
+        assertInvalid(validManifest().replace("importPath: skills/support-policy", "importPath: \"   \""),
+                "invalid dependency.importPath");
+    }
+
+    @Test
     void rejects_malformed_yaml() {
         assertInvalid("apiVersion: [", "invalid capability manifest");
     }
@@ -249,6 +323,164 @@ class CapabilityPackageParserTest {
         assertThatThrownBy(() -> parser.parse(manifest))
                 .isInstanceOf(InvalidCapabilityManifestException.class)
                 .hasMessage(message);
+    }
+
+    private String withCpu(String request, String limit) {
+        return validManifest()
+                .replace("cpu: 250m", "cpu: " + request)
+                .replace("cpu: \"1\"", "cpu: " + limit);
+    }
+
+    private String normativeManifest() {
+        return """
+                apiVersion: governance.platform.example/v1alpha1
+                kind: CapabilityPackage
+                metadata:
+                  name: support-assistant
+                  namespace: customer-operations
+                  version: 1.4.0
+                  labels:
+                    data-classification: internal
+                    owner: support-platform
+                release:
+                  digest: sha256:7e6d26f6e0f0c5f53c86c366726721ab2f6322d55f5d9cb8e947f48751fa84f1
+                  artifact:
+                    uri: oci://registry.example.internal/capabilities/support-assistant
+                    mediaType: application/vnd.example.capability.bundle.v1+tar
+                  source:
+                    repository: https://git.example.internal/support/assistant.git
+                    revision: 5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42
+                spec:
+                  capabilities:
+                    - id: support-agent
+                      type: Agent
+                      entrypoint:
+                        artifactPath: agents/support-agent
+                        command: ["/opt/platform/bin/agent-runner"]
+                        args: ["--manifest", "/workspace/agent.json"]
+                      dependencies:
+                        capabilities:
+                          - id: customer-records
+                            type: MCP
+                            version: 2.3.1
+                            digest: sha256:0561ec4dfdf541a3f669c25e92113ef319cfb3f39b196839f198328c30e87c4e
+                            required: true
+                        skills:
+                          - name: support-policy
+                            version: 3.2.0
+                            digest: sha256:943773023148bcc19ac6d71b793863f0750f30921efdb7ccad1cf7d54d040f4b
+                            importPath: skills/support-policy
+                      permissions:
+                        serviceAccounts: []
+                        kubernetesApi: []
+                        modelPolicies:
+                          - general-chat
+                        tools:
+                          - mcp:customer-records/read_customer
+                          - mcp:customer-records/list_cases
+                      network:
+                        defaultDeny: true
+                        allow:
+                          - name: model-gateway
+                            protocol: HTTPS
+                            host: model-gateway.platform.svc.cluster.local
+                            port: 8443
+                          - name: customer-records-mcp
+                            protocol: HTTP
+                            host: customer-records.customer-operations.svc.cluster.local
+                            port: 8080
+                      secrets:
+                        - name: crm-client
+                          ref:
+                            provider: platform-secret-store
+                            key: customer-operations/crm-client
+                            version: "12"
+                          mount:
+                            type: file
+                            path: /var/run/secrets/platform/crm-client
+                      resources:
+                        requests:
+                          cpu: 250m
+                          memory: 512Mi
+                        limits:
+                          cpu: "1"
+                          memory: 1Gi
+                      health:
+                        startup:
+                          httpGet: { path: /health/startup, port: 8080 }
+                          failureThreshold: 30
+                          periodSeconds: 2
+                        readiness:
+                          httpGet: { path: /health/ready, port: 8080 }
+                          periodSeconds: 10
+                          timeoutSeconds: 2
+                        liveness:
+                          httpGet: { path: /health/live, port: 8080 }
+                          periodSeconds: 20
+                          timeoutSeconds: 2
+                      runtimeProfile:
+                        class: hosted-standard
+                        isolation: namespace
+                        replicas: 1
+                        timeoutSeconds: 90
+                        maxConcurrency: 8
+                        terminationGracePeriodSeconds: 30
+                    - id: customer-records
+                      type: MCP
+                      entrypoint:
+                        image: registry.example.internal/mcp/customer-records@sha256:0561ec4dfdf541a3f669c25e92113ef319cfb3f39b196839f198328c30e87c4e
+                        transport:
+                          type: streamable-http
+                          port: 8080
+                          path: /mcp
+                      dependencies:
+                        capabilities: []
+                        skills: []
+                      permissions:
+                        serviceAccounts: []
+                        kubernetesApi: []
+                        modelPolicies: []
+                        tools: []
+                      network:
+                        defaultDeny: true
+                        allow:
+                          - name: crm-api
+                            protocol: HTTPS
+                            host: crm-api.example.internal
+                            port: 443
+                      secrets:
+                        - name: crm-service-account
+                          ref:
+                            provider: platform-secret-store
+                            key: customer-operations/crm-service-account
+                            version: "7"
+                          mount:
+                            type: env
+                            variable: CRM_CREDENTIAL_FILE
+                      resources:
+                        requests: { cpu: 100m, memory: 256Mi }
+                        limits: { cpu: 500m, memory: 512Mi }
+                      health:
+                        startup:
+                          httpGet: { path: /health/startup, port: 8080 }
+                          failureThreshold: 20
+                          periodSeconds: 3
+                        readiness:
+                          httpGet: { path: /health/ready, port: 8080 }
+                          periodSeconds: 10
+                          timeoutSeconds: 2
+                        liveness:
+                          httpGet: { path: /health/live, port: 8080 }
+                          periodSeconds: 20
+                          timeoutSeconds: 2
+                      runtimeProfile:
+                        class: hosted-standard
+                        isolation: namespace
+                        replicas: 1
+                        timeoutSeconds: 30
+                        maxConcurrency: 32
+                        terminationGracePeriodSeconds: 20
+                """;
     }
 
     private String validManifest() {

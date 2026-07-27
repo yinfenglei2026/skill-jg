@@ -43,7 +43,7 @@ public final class CapabilityPackageParser {
                     + "(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?"
                     + "(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$");
     private static final Pattern CPU_QUANTITY = Pattern.compile(
-            "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(m)?");
+            "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(n|u|m)?");
     private static final Pattern MEMORY_QUANTITY = Pattern.compile(
             "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(Ki|Mi|Gi|Ti|k|M|G|T)?");
     private static final Set<String> HOSTED_CAPABILITY_TYPES = Set.of("Agent", "MCP");
@@ -64,6 +64,8 @@ public final class CapabilityPackageParser {
             "id", "type", "version", "digest", "required");
     private static final Set<String> SKILL_DEPENDENCY_FIELDS = Set.of(
             "name", "version", "digest", "importPath");
+    private static final Set<String> PERMISSIONS_FIELDS = Set.of(
+            "serviceAccounts", "kubernetesApi", "modelPolicies", "tools");
     private static final Set<String> NETWORK_FIELDS = Set.of("defaultDeny", "allow");
     private static final Set<String> NETWORK_ALLOW_FIELDS = Set.of("name", "protocol", "host", "port");
     private static final Set<String> SECRET_FIELDS = Set.of("name", "ref", "mount");
@@ -171,13 +173,25 @@ public final class CapabilityPackageParser {
             if (fixedType == null && !HOSTED_CAPABILITY_TYPES.contains(type)) {
                 throw invalid("unsupported dependency type");
             }
+            String importPath = fixedType == null
+                    ? optionalText(entry, "importPath", "dependency.importPath")
+                    : skillImportPath(entry);
             dependencies.add(new DependencyDefinition(
                     text(entry, identityField, "dependency." + identityField),
                     type,
                     text(entry, "version", "dependency.version"),
                     digest,
-                    optionalText(entry, "importPath", "dependency.importPath")));
+                    importPath));
         }
+    }
+
+    private String skillImportPath(ObjectNode dependency) {
+        JsonNode importPath = dependency.get("importPath");
+        if (importPath == null || importPath.isNull() || !importPath.isTextual()
+                || importPath.textValue().isBlank()) {
+            throw invalid("invalid dependency.importPath");
+        }
+        return importPath.textValue();
     }
 
     private void validatePermissions(ObjectNode capability, String type) {
@@ -188,6 +202,7 @@ public final class CapabilityPackageParser {
             }
             return;
         }
+        requireOnlyFields(permissions, PERMISSIONS_FIELDS, "permissions");
 
         JsonNode policiesNode = permissions.get("modelPolicies");
         if (!(policiesNode instanceof ArrayNode policies)) {
@@ -264,7 +279,16 @@ public final class CapabilityPackageParser {
             throw invalid("invalid resource quantity");
         }
         BigDecimal quantity = new BigDecimal(matcher.group(1));
-        return matcher.group(2) == null ? quantity : quantity.movePointLeft(3);
+        String suffix = matcher.group(2);
+        if (suffix == null) {
+            return quantity;
+        }
+        return switch (suffix) {
+            case "n" -> quantity.movePointLeft(9);
+            case "u" -> quantity.movePointLeft(6);
+            case "m" -> quantity.movePointLeft(3);
+            default -> throw invalid("invalid resource quantity");
+        };
     }
 
     private BigDecimal memoryQuantity(ObjectNode values, String field, String path) {
@@ -440,6 +464,18 @@ public final class CapabilityPackageParser {
     private void rejectNullNodes(JsonNode node) {
         if (node.isNull() || node.isMissingNode()) {
             throw invalid("invalid capability manifest");
+        }
+        if (node instanceof ObjectNode objectNode) {
+            Iterator<String> fields = objectNode.fieldNames();
+            while (fields.hasNext()) {
+                String field = fields.next();
+                JsonNode child = objectNode.get(field);
+                if (field.equals("importPath") && child.isNull()) {
+                    throw invalid("invalid dependency.importPath");
+                }
+                rejectNullNodes(child);
+            }
+            return;
         }
         Iterator<JsonNode> children = node.elements();
         while (children.hasNext()) {
