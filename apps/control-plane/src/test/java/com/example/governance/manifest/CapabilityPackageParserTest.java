@@ -128,10 +128,56 @@ class CapabilityPackageParserTest {
         String manifest = validManifest().replace("modelPolicies:\n          - general-chat",
                 "modelPolicies:\n          - general-chat\n        openaiApiKey: super-secret");
 
-        assertThatThrownBy(() -> parser.parse(manifest))
-                .isInstanceOf(InvalidCapabilityManifestException.class)
-                .hasMessage("unexpected field in permissions")
-                .hasMessageNotContaining("super-secret");
+        assertCredentialRejected(manifest);
+    }
+
+    @Test
+    void rejects_nested_credential_fields_without_disclosing_them() {
+        String manifest = normativeManifest().replace("class: hosted-standard",
+                "class: hosted-standard\n        providerCredentials:\n          apiKey: super-secret");
+
+        assertCredentialRejected(manifest);
+    }
+
+    @Test
+    void rejects_credentials_hidden_in_a_nested_non_schema_secrets_field() {
+        String manifest = normativeManifest().replace("class: hosted-standard",
+                "class: hosted-standard\n        nested:\n          secrets:\n            apiKey: super-secret");
+
+        assertCredentialRejected(manifest);
+    }
+
+    @Test
+    void rejects_inline_credential_values_without_disclosing_them() {
+        String manifest = normativeManifest().replace("class: hosted-standard", "class: \"Bearer super-secret\"");
+
+        assertCredentialRejected(manifest);
+    }
+
+    @Test
+    void rejects_malformed_service_account_permissions() {
+        assertInvalid(normativeManifest().replace("serviceAccounts: []", "serviceAccounts: platform-runner"),
+                "permissions.serviceAccounts must be an array");
+    }
+
+    @Test
+    void rejects_malformed_kubernetes_api_permission_entries() {
+        assertInvalid(normativeManifest().replace("kubernetesApi: []", "kubernetesApi: [42]"),
+                "permissions.kubernetesApi entries must be nonblank text");
+    }
+
+    @Test
+    void rejects_malformed_model_policy_permissions() {
+        assertInvalid(validManifest().replace("modelPolicies:\n          - general-chat", "modelPolicies: general-chat"),
+                "permissions.modelPolicies must be an array");
+    }
+
+    @Test
+    void rejects_malformed_tool_permission_entries() {
+        assertInvalid(normativeManifest().replace(
+                        "tools:\n          - mcp:customer-records/read_customer\n          - mcp:customer-records/list_cases",
+                        "tools: [42]"),
+                "permissions.tools entries must be nonblank text");
     }
 
     @Test
@@ -306,6 +352,12 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_null_and_blank_input_with_a_stable_error() {
+        assertInvalid(null, "invalid capability manifest");
+        assertInvalid(" \n\t", "invalid capability manifest");
+    }
+
+    @Test
     void rejects_missing_required_structures() {
         assertInvalid("apiVersion: governance.platform.example/v1alpha1\nkind: CapabilityPackage\n", "missing required metadata");
     }
@@ -323,6 +375,13 @@ class CapabilityPackageParserTest {
         assertThatThrownBy(() -> parser.parse(manifest))
                 .isInstanceOf(InvalidCapabilityManifestException.class)
                 .hasMessage(message);
+    }
+
+    private void assertCredentialRejected(String manifest) {
+        assertThatThrownBy(() -> parser.parse(manifest))
+                .isInstanceOf(InvalidCapabilityManifestException.class)
+                .hasMessage("inline credential material is forbidden")
+                .hasMessageNotContaining("super-secret");
     }
 
     private String withCpu(String request, String limit) {

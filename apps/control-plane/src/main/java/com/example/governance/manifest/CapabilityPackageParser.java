@@ -46,6 +46,13 @@ public final class CapabilityPackageParser {
             "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(n|u|m)?");
     private static final Pattern MEMORY_QUANTITY = Pattern.compile(
             "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(Ki|Mi|Gi|Ti|k|M|G|T)?");
+    private static final Pattern INLINE_CREDENTIAL_VALUE = Pattern.compile(
+            "(?i)^(?:bearer\\s+\\S+|sk[-_][A-Za-z0-9_-]+|gh[opsu]_[A-Za-z0-9]+|xox[baprs]-[A-Za-z0-9-]+)$");
+    private static final Pattern AWS_ACCESS_KEY = Pattern.compile("^(?:AKIA|ASIA)[A-Z0-9]{16}$");
+    private static final Set<String> CREDENTIAL_FIELD_MARKERS = Set.of(
+            "apikey", "accesstoken", "refreshtoken", "authtoken", "bearertoken",
+            "password", "passwd", "credential", "credentials", "accesskey", "secretkey",
+            "privatekey", "clientsecret", "providerkey", "authorization");
     private static final Set<String> HOSTED_CAPABILITY_TYPES = Set.of("Agent", "MCP");
     private static final Set<String> NETWORK_PROTOCOLS = Set.of("HTTP", "HTTPS", "TCP");
     private static final Set<String> PROVIDER_DIRECT_HOSTS = Set.of(
@@ -78,7 +85,11 @@ public final class CapabilityPackageParser {
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     public CapabilityPackage parse(String document) {
+        if (document == null || document.isBlank()) {
+            throw invalid("invalid capability manifest");
+        }
         ObjectNode root = readRoot(document);
+        rejectInlineCredentialMaterial(root, "");
         requireOnlyFields(root, ROOT_FIELDS, "document");
         String apiVersion = text(root, "apiVersion", "apiVersion");
         if (!API_VERSION.equals(apiVersion)) {
@@ -196,32 +207,40 @@ public final class CapabilityPackageParser {
 
     private void validatePermissions(ObjectNode capability, String type) {
         JsonNode permissionsNode = capability.get("permissions");
-        if (!(permissionsNode instanceof ObjectNode permissions)) {
+        if (permissionsNode == null) {
             if (type.equals("Agent")) {
                 throw invalid("Agent permissions.modelPolicies must not be empty");
             }
             return;
+        }
+        if (!(permissionsNode instanceof ObjectNode permissions)) {
+            throw invalid("permissions must be an object");
         }
         requireOnlyFields(permissions, PERMISSIONS_FIELDS, "permissions");
 
-        JsonNode policiesNode = permissions.get("modelPolicies");
-        if (!(policiesNode instanceof ArrayNode policies)) {
-            if (type.equals("Agent")) {
-                throw invalid("Agent permissions.modelPolicies must not be empty");
-            }
-            if (policiesNode != null) {
-                throw invalid("permissions.modelPolicies must be an array");
-            }
-            return;
-        }
-        for (JsonNode policy : policies) {
-            if (!policy.isTextual() || policy.textValue().isBlank()) {
-                throw invalid("permissions.modelPolicies entries must be text");
-            }
-        }
-        if (type.equals("Agent") && policies.isEmpty()) {
+        validatePermissionEntries(permissions, "serviceAccounts");
+        validatePermissionEntries(permissions, "kubernetesApi");
+        ArrayNode policies = validatePermissionEntries(permissions, "modelPolicies");
+        validatePermissionEntries(permissions, "tools");
+        if (type.equals("Agent") && (policies == null || policies.isEmpty())) {
             throw invalid("Agent permissions.modelPolicies must not be empty");
         }
+    }
+
+    private ArrayNode validatePermissionEntries(ObjectNode permissions, String field) {
+        JsonNode entriesNode = permissions.get(field);
+        if (entriesNode == null) {
+            return null;
+        }
+        if (!(entriesNode instanceof ArrayNode entries)) {
+            throw invalid("permissions." + field + " must be an array");
+        }
+        for (JsonNode entry : entries) {
+            if (!entry.isTextual() || entry.textValue().isBlank()) {
+                throw invalid("permissions." + field + " entries must be nonblank text");
+            }
+        }
+        return entries;
     }
 
     private NetworkDefinition parseNetwork(ObjectNode network) {
@@ -416,6 +435,51 @@ public final class CapabilityPackageParser {
             text(source, "repository", "release.source.repository");
             text(source, "revision", "release.source.revision");
         }
+    }
+
+    private void rejectInlineCredentialMaterial(JsonNode node, String path) {
+        if (node instanceof ObjectNode objectNode) {
+            Iterator<String> fields = objectNode.fieldNames();
+            while (fields.hasNext()) {
+                String field = fields.next();
+                JsonNode child = objectNode.get(field);
+                String childPath = path.isEmpty() ? field : path + "." + field;
+                if (childPath.equals("spec.capabilities[].secrets")) {
+                    continue;
+                }
+                if (isCredentialField(field)
+                        || (field.equals("name") && child.isTextual() && isCredentialField(child.textValue()))) {
+                    throw invalid("inline credential material is forbidden");
+                }
+                rejectInlineCredentialMaterial(child, childPath);
+            }
+            return;
+        }
+        if (node instanceof ArrayNode arrayNode) {
+            for (JsonNode child : arrayNode) {
+                rejectInlineCredentialMaterial(child, path + "[]");
+            }
+            return;
+        }
+        if (node.isTextual() && isInlineCredentialValue(node.textValue())) {
+            throw invalid("inline credential material is forbidden");
+        }
+    }
+
+    private boolean isCredentialField(String field) {
+        String normalized = field.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+        if (CREDENTIAL_FIELD_MARKERS.stream().anyMatch(normalized::contains)) {
+            return true;
+        }
+        return normalized.equals("token") || normalized.endsWith("token")
+                || normalized.equals("secret") || normalized.endsWith("secret");
+    }
+
+    private boolean isInlineCredentialValue(String value) {
+        String normalized = value.trim();
+        return INLINE_CREDENTIAL_VALUE.matcher(normalized).matches()
+                || AWS_ACCESS_KEY.matcher(normalized).matches()
+                || (normalized.startsWith("-----BEGIN ") && normalized.contains("PRIVATE KEY-----"));
     }
 
     private CanonicalForm canonicalize(ObjectNode root) {
