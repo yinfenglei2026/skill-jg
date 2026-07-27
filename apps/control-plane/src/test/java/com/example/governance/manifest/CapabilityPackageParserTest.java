@@ -66,6 +66,18 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_an_unsupported_hosted_capability_type() {
+        assertInvalid(validManifest().replace("type: Agent", "type: Plugin"),
+                "unsupported capability type");
+    }
+
+    @Test
+    void rejects_an_unsupported_capability_dependency_type() {
+        assertInvalid(validManifest().replace("type: MCP", "type: Database"),
+                "unsupported dependency type");
+    }
+
+    @Test
     void rejects_networking_without_default_deny() {
         assertInvalid(validManifest().replace("defaultDeny: true", "defaultDeny: false"),
                 "network.defaultDeny must be true");

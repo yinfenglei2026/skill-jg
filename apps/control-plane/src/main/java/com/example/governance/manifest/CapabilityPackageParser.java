@@ -35,6 +35,7 @@ public final class CapabilityPackageParser {
     private static final String API_VERSION = "governance.platform.example/v1alpha1";
     private static final String KIND = "CapabilityPackage";
     private static final Pattern SHA256 = Pattern.compile("sha256:[a-f0-9]{64}");
+    private static final Set<String> HOSTED_CAPABILITY_TYPES = Set.of("Agent", "MCP");
     private static final Set<String> ROOT_FIELDS = Set.of("apiVersion", "kind", "metadata", "release", "spec");
     private static final Set<String> METADATA_FIELDS = Set.of("name", "namespace", "version", "labels");
     private static final Set<String> RELEASE_FIELDS = Set.of("digest", "artifact", "source");
@@ -112,6 +113,9 @@ public final class CapabilityPackageParser {
         requireOnlyFields(node, CAPABILITY_FIELDS, "capability");
         String id = text(node, "id", "capability.id");
         String type = text(node, "type", "capability.type");
+        if (!HOSTED_CAPABILITY_TYPES.contains(type)) {
+            throw invalid("unsupported capability type");
+        }
         ObjectNode dependencyGroups = object(node, "dependencies", "capability.dependencies");
         requireOnlyFields(dependencyGroups, DEPENDENCY_GROUP_FIELDS, "capability.dependencies");
         List<DependencyDefinition> dependencies = new ArrayList<>();
@@ -142,9 +146,13 @@ public final class CapabilityPackageParser {
             if (digest == null || !SHA256.matcher(digest).matches()) {
                 throw invalid("dependency digest must be a sha256 digest");
             }
+            String type = fixedType == null ? text(entry, "type", "dependency.type") : fixedType;
+            if (fixedType == null && !HOSTED_CAPABILITY_TYPES.contains(type)) {
+                throw invalid("unsupported dependency type");
+            }
             dependencies.add(new DependencyDefinition(
                     text(entry, identityField, "dependency." + identityField),
-                    fixedType == null ? text(entry, "type", "dependency.type") : fixedType,
+                    type,
                     text(entry, "version", "dependency.version"),
                     digest,
                     optionalText(entry, "importPath", "dependency.importPath")));
