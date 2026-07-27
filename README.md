@@ -99,7 +99,7 @@ npm run dev -- --host localhost
 
 The portal uses Authorization Code with PKCE in the browser and does not contain a direct-grant login path. The direct-grant `governance-smoke` client is reserved for the local PowerShell smoke script.
 
-The React/Vite project definition is retained for normal Node environments. This workstation currently blocks `esbuild` postinstall execution; the root verifier therefore runs the dependency-free browser-module test instead. CI installs the locked dependency graph and runs Vitest. Do not interpret passing local checks as a production-readiness claim.
+The root verifier retains the dependency-free Keycloak realm contract and also runs the Portal Vitest suite, TypeScript check, and production Vite build. When Portal dependencies are absent it installs the locked dependency graph with lifecycle scripts disabled before verification. CI performs a normal locked install and runs the same tests and production build. Do not interpret passing local checks as a production-readiness claim.
 
 ## Control Plane Security
 

@@ -36,9 +36,37 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-Push-Location (Join-Path $repositoryRoot 'apps/portal')
+$portal = Join-Path $repositoryRoot 'apps/portal'
+if (-not (Test-Path -LiteralPath (Join-Path $portal 'node_modules/vitest/vitest.mjs'))) {
+    Push-Location $portal
+    try {
+        npm ci --ignore-scripts
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+Push-Location $portal
 try {
     node --test test/*.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    node node_modules/vitest/vitest.mjs run
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    node node_modules/typescript/bin/tsc --noEmit
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    node node_modules/vite/bin/vite.js build
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }

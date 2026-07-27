@@ -20,11 +20,12 @@ jobs:
       - uses: azure/setup-kubectl@v4
       - name: Verify control plane
         run: ./mvnw -B -pl apps/control-plane verify
-      - name: Verify portal view model
+      - name: Verify portal
         working-directory: apps/portal
         run: |
           npm ci
           npm test
+          npm run build
       - name: Render Kubernetes manifests
         run: kubectl kustomize infra/k8s/base > /dev/null
       - name: Validate local dependency declarations
