@@ -2,11 +2,13 @@ package com.example.governance.api;
 
 import com.example.governance.audit.AuditEvent;
 import com.example.governance.audit.AuditEventRepository;
+import com.example.governance.audit.AuditService;
 import com.example.governance.capability.Capability;
 import com.example.governance.capability.CapabilityRepository;
 import com.example.governance.capability.CapabilityType;
 import com.example.governance.release.ArtifactReference;
 import com.example.governance.release.ArtifactVerifier;
+import com.example.governance.release.InvalidReleaseTransitionException;
 import com.example.governance.release.Release;
 import com.example.governance.release.ReleaseRepository;
 import com.example.governance.security.Actor;
@@ -25,20 +27,24 @@ public class GovernanceService {
     private final CapabilityRepository capabilities;
     private final ReleaseRepository releases;
     private final AuditEventRepository auditEvents;
+    private final AuditService auditService;
     private final CurrentActor currentActor;
     private final ArtifactVerifier artifactVerifier;
 
     @Autowired
     public GovernanceService(CapabilityRepository capabilities, ReleaseRepository releases,
-                             AuditEventRepository auditEvents, CurrentActor currentActor, ArtifactVerifier artifactVerifier) {
-        this(capabilities, releases, auditEvents, currentActor, artifactVerifier, Clock.systemUTC());
+                             AuditEventRepository auditEvents, AuditService auditService, CurrentActor currentActor,
+                             ArtifactVerifier artifactVerifier) {
+        this(capabilities, releases, auditEvents, auditService, currentActor, artifactVerifier, Clock.systemUTC());
     }
 
     GovernanceService(CapabilityRepository capabilities, ReleaseRepository releases,
-                      AuditEventRepository auditEvents, CurrentActor currentActor, ArtifactVerifier artifactVerifier, Clock clock) {
+                      AuditEventRepository auditEvents, AuditService auditService, CurrentActor currentActor,
+                      ArtifactVerifier artifactVerifier, Clock clock) {
         this.capabilities = capabilities;
         this.releases = releases;
         this.auditEvents = auditEvents;
+        this.auditService = auditService;
         this.currentActor = currentActor;
         this.artifactVerifier = artifactVerifier;
         this.clock = clock;
@@ -50,7 +56,7 @@ public class GovernanceService {
         requireDepartment(actor, department);
         Capability capability = new Capability(name, department, type);
         capabilities.save(capability);
-        audit(actor, "CAPABILITY_CREATED", name, "ALLOW", null);
+        auditService.record(actor, "CAPABILITY_CREATED", name, "ALLOW", null, now());
         return capability;
     }
 
@@ -63,7 +69,8 @@ public class GovernanceService {
         artifactVerifier.verify(artifact);
         Release release = Release.draft(capabilityId, version, artifact.value(), artifact.digest(), now());
         releases.save(release);
-        audit(actor, "RELEASE_REGISTERED", releaseId(capabilityId, version), "ALLOW", release.digest());
+        auditService.record(actor, "RELEASE_REGISTERED", releaseId(capabilityId, version), "ALLOW", release.digest(),
+                now());
         return release;
     }
 
@@ -158,8 +165,13 @@ public class GovernanceService {
         Actor actor = currentActor.require();
         Release release = requireRelease(releaseId);
         requireDepartment(actor, requireCapability(release.capabilityId()).department());
-        transition.apply(release, actor.subject(), now());
-        audit(actor, action, releaseId, decision, release.digest());
+        try {
+            transition.apply(release, actor.subject(), now());
+        } catch (InvalidReleaseTransitionException exception) {
+            auditService.recordDeniedTransition(actor, releaseId, release.digest(), now());
+            throw exception;
+        }
+        auditService.record(actor, action, releaseId, decision, release.digest(), now());
         return release;
     }
 
@@ -177,10 +189,6 @@ public class GovernanceService {
         if (!actor.department().equals(department)) {
             throw new AccessDeniedException("JWT department is not authorized for this capability");
         }
-    }
-
-    private void audit(Actor actor, String action, String subject, String decision, String digest) {
-        auditEvents.save(new AuditEvent(actor.subject(), actor.department(), action, subject, decision, digest, now()));
     }
 
     private Instant now() {

@@ -205,6 +205,12 @@ class GovernanceApiTest {
                         .with(as("OPERATOR", "runtime-controller@example.internal")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_RELEASE_TRANSITION"));
+
+        mockMvc.perform(get("/api/v1/audit-events")
+                        .with(as("READ_ONLY", "auditor@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.action == 'RELEASE_TRANSITION_DENIED')]", hasSize(1)))
+                .andExpect(jsonPath("$[?(@.decision == 'DENY')]", hasSize(1)));
     }
 
     @Test
