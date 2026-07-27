@@ -21,14 +21,20 @@ class CapabilityPackageParserTest {
         assertThat(agent.type()).isEqualTo("Agent");
         assertThat(agent.network().defaultDeny()).isTrue();
         assertThat(agent.dependencies()).extracting(CapabilityPackage.DependencyDefinition::type)
-                .containsExactlyInAnyOrder("MCP", "Skill");
+                .containsExactlyInAnyOrder("MCP", "SKILL");
         assertThat(agent.dependencies()).extracting(CapabilityPackage.DependencyDefinition::digest)
                 .containsExactlyInAnyOrder(MCP_DIGEST, SKILL_DIGEST);
-        assertThat(agent.dependencies()).contains(
-                new CapabilityPackage.DependencyDefinition(
-                        "customer-records", "MCP", "2.3.1", MCP_DIGEST, null),
-                new CapabilityPackage.DependencyDefinition(
-                        "support-policy", "Skill", "3.2.0", SKILL_DIGEST, "skills/support-policy"));
+        assertThat(agent.dependencies()).contains(new CapabilityPackage.DependencyDefinition(
+                "customer-records", "MCP", "2.3.1", MCP_DIGEST, null));
+        CapabilityPackage.DependencyDefinition skill = agent.dependencies().stream()
+                .filter(dependency -> dependency.type().equals("SKILL"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(skill.id()).isEqualTo("support-policy");
+        assertThat(skill.type()).isEqualTo("SKILL");
+        assertThat(skill.version()).isEqualTo("3.2.0");
+        assertThat(skill.digest()).isEqualTo(SKILL_DIGEST);
+        assertThat(skill.importPath()).isEqualTo("skills/support-policy");
     }
 
     @Test
@@ -81,6 +87,12 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_a_skill_dependency_without_a_name() {
+        assertInvalid(validManifest().replace("name: support-policy", "missingName: true"),
+                "missing required dependency.name");
+    }
+
+    @Test
     void rejects_malformed_yaml() {
         assertInvalid("apiVersion: [", "invalid capability manifest");
     }
@@ -126,8 +138,7 @@ class CapabilityPackageParserTest {
                             version: 2.3.1
                             digest: %s
                         skills:
-                          - id: support-policy
-                            type: Skill
+                          - name: support-policy
                             version: 3.2.0
                             digest: %s
                             importPath: skills/support-policy
@@ -160,8 +171,7 @@ class CapabilityPackageParserTest {
                           - importPath: skills/support-policy
                             version: 3.2.0
                             digest: %s
-                            type: Skill
-                            id: support-policy
+                            name: support-policy
                         capabilities:
                           - digest: %s
                             version: 2.3.1

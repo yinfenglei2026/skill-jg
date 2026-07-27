@@ -72,8 +72,8 @@ public final class CapabilityPackageParser {
         String type = text(node, "type", "capability.type");
         ObjectNode dependencyGroups = object(node, "dependencies", "capability.dependencies");
         List<DependencyDefinition> dependencies = new ArrayList<>();
-        addDependencies(dependencies, dependencyGroups, "capabilities");
-        addDependencies(dependencies, dependencyGroups, "skills");
+        addDependencies(dependencies, dependencyGroups, "capabilities", "id", null);
+        addDependencies(dependencies, dependencyGroups, "skills", "name", "SKILL");
 
         ObjectNode networkNode = object(node, "network", "capability.network");
         JsonNode defaultDeny = networkNode.get("defaultDeny");
@@ -85,7 +85,12 @@ public final class CapabilityPackageParser {
         return new CapabilityDefinition(id, type, dependencies, new NetworkDefinition(true), secrets);
     }
 
-    private void addDependencies(List<DependencyDefinition> dependencies, ObjectNode groups, String field) {
+    private void addDependencies(
+            List<DependencyDefinition> dependencies,
+            ObjectNode groups,
+            String field,
+            String identityField,
+            String fixedType) {
         ArrayNode entries = array(groups, field, "capability.dependencies." + field);
         for (JsonNode entryNode : entries) {
             ObjectNode entry = requireObject(entryNode, "dependency");
@@ -94,8 +99,8 @@ public final class CapabilityPackageParser {
                 throw invalid("dependency digest must be a sha256 digest");
             }
             dependencies.add(new DependencyDefinition(
-                    text(entry, "id", "dependency.id"),
-                    text(entry, "type", "dependency.type"),
+                    text(entry, identityField, "dependency." + identityField),
+                    fixedType == null ? text(entry, "type", "dependency.type") : fixedType,
                     text(entry, "version", "dependency.version"),
                     digest,
                     optionalText(entry, "importPath")));
