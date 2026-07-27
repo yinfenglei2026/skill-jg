@@ -94,6 +94,14 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_an_adversarially_long_package_version_with_a_domain_error() {
+        String version = "1.0.0-" + "a.".repeat(1_000) + "a";
+
+        assertInvalid(validManifest().replace("version: 1.4.0", "version: " + version),
+                "invalid metadata.version");
+    }
+
+    @Test
     void accepts_semver_2_dependency_versions() {
         CapabilityPackage capabilityPackage = parser.parse(validManifest()
                 .replace("version: 2.3.1", "version: 2.3.1-rc.1+build.7")
@@ -178,6 +186,41 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_exact_credential_fields_outside_the_approved_secrets_structure() {
+        for (String field : new String[] {"auth", "token", "secret"}) {
+            String manifest = normativeManifest().replace("    owner: support-platform",
+                    "    owner: support-platform\n    " + field + ": hunter2");
+
+            assertCredentialRejected(manifest, "hunter2");
+        }
+    }
+
+    @Test
+    void accepts_benign_credential_rotation_metadata() {
+        String manifest = normativeManifest().replace("    owner: support-platform",
+                "    owner: support-platform\n    credential-rotation: scheduled");
+
+        assertThatCode(() -> parser.parse(manifest)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejects_uri_userinfo_without_disclosing_it() {
+        assertCredentialRejected(normativeManifest().replace(
+                "oci://registry.example.internal/capabilities/support-assistant",
+                "oci://user:hunter2@registry.example.internal/capabilities/support-assistant"), "hunter2");
+        assertCredentialRejected(normativeManifest().replace(
+                "https://git.example.internal/support/assistant.git",
+                "https://user:hunter2@git.example.internal/support/assistant.git"), "hunter2");
+    }
+
+    @Test
+    void rejects_uri_userinfo_inside_an_approved_secret_reference() {
+        assertCredentialRejected(normativeManifest().replace(
+                "key: customer-operations/crm-client",
+                "key: https://user:hunter2@secrets.example.internal/key"), "hunter2");
+    }
+
+    @Test
     void rejects_malformed_service_account_permissions() {
         assertInvalid(normativeManifest().replace("serviceAccounts: []", "serviceAccounts: platform-runner"),
                 "permissions.serviceAccounts must be an array");
@@ -206,7 +249,16 @@ class CapabilityPackageParserTest {
     @Test
     void rejects_provider_direct_model_endpoints() {
         assertInvalid(validManifest().replace("model-gateway.platform.svc.cluster.local", "api.openai.com"),
-                "provider-direct model endpoints are forbidden");
+                "network.allow.host must be an internal DNS name");
+    }
+
+    @Test
+    void rejects_all_non_internal_network_hosts() {
+        for (String host : new String[] {
+                "updates.example.com", "api.mistral.ai", "10.0.0.1", "127.0.0.1", "API.MISTRAL.AI."}) {
+            assertInvalid(validManifest().replace("model-gateway.platform.svc.cluster.local", host),
+                    "network.allow.host must be an internal DNS name");
+        }
     }
 
     @Test
@@ -271,6 +323,22 @@ class CapabilityPackageParserTest {
         assertInvalid(validManifest().replace("memory: 512Mi", "memory: 512MB"),
                 "invalid resource quantity");
         assertInvalid(withCpu("500x", "\"1\""), "invalid resource quantity");
+    }
+
+    @Test
+    void rejects_an_adversarially_long_cpu_quantity_with_a_domain_error() {
+        String quantity = "9".repeat(500_000) + "m";
+
+        assertInvalid(validManifest().replace("cpu: 250m", "cpu: \"" + quantity + "\""),
+                "invalid resource quantity");
+    }
+
+    @Test
+    void rejects_an_adversarially_long_memory_quantity_with_a_domain_error() {
+        String quantity = "9".repeat(500_000) + "Mi";
+
+        assertInvalid(validManifest().replace("memory: 512Mi", "memory: \"" + quantity + "\""),
+                "invalid resource quantity");
     }
 
     @Test
@@ -388,6 +456,17 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_multiple_yaml_documents_without_disclosing_trailing_content() {
+        String secret = "hunter2";
+        String manifest = validManifest() + "---\npassword: " + secret + "\n";
+
+        assertThatThrownBy(() -> parser.parse(manifest))
+                .isInstanceOf(InvalidCapabilityManifestException.class)
+                .hasMessage("invalid capability manifest")
+                .hasMessageNotContaining(secret);
+    }
+
+    @Test
     void rejects_non_text_values_for_textual_fields() {
         assertInvalid(validManifest().replace("name: support-assistant", "name: 42"),
                 "metadata.name must be text");
@@ -478,10 +557,14 @@ class CapabilityPackageParserTest {
     }
 
     private void assertCredentialRejected(String manifest) {
+        assertCredentialRejected(manifest, "super-secret");
+    }
+
+    private void assertCredentialRejected(String manifest, String secret) {
         assertThatThrownBy(() -> parser.parse(manifest))
                 .isInstanceOf(InvalidCapabilityManifestException.class)
                 .hasMessage("inline credential material is forbidden")
-                .hasMessageNotContaining("super-secret");
+                .hasMessageNotContaining(secret);
     }
 
     private String withCpu(String request, String limit) {

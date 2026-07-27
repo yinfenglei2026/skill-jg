@@ -29,6 +29,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.error.YAMLException;
 import org.yaml.snakeyaml.events.AliasEvent;
+import org.yaml.snakeyaml.events.DocumentStartEvent;
 import org.yaml.snakeyaml.parser.Parser;
 import org.yaml.snakeyaml.parser.ParserImpl;
 import org.yaml.snakeyaml.reader.StreamReader;
@@ -36,6 +37,8 @@ import org.yaml.snakeyaml.reader.StreamReader;
 public final class CapabilityPackageParser {
     private static final String API_VERSION = "governance.platform.example/v1alpha1";
     private static final String KIND = "CapabilityPackage";
+    private static final int MAX_SEMANTIC_VERSION_LENGTH = 256;
+    private static final int MAX_RESOURCE_QUANTITY_LENGTH = 128;
     private static final Pattern SHA256 = Pattern.compile("sha256:[a-f0-9]{64}");
     private static final Pattern SEMVER = Pattern.compile(
             "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)"
@@ -49,14 +52,16 @@ public final class CapabilityPackageParser {
     private static final Pattern INLINE_CREDENTIAL_VALUE = Pattern.compile(
             "(?i)^(?:bearer\\s+\\S+|sk[-_][A-Za-z0-9_-]+|gh[opsu]_[A-Za-z0-9]+|xox[baprs]-[A-Za-z0-9-]+)$");
     private static final Pattern AWS_ACCESS_KEY = Pattern.compile("^(?:AKIA|ASIA)[A-Z0-9]{16}$");
-    private static final Set<String> CREDENTIAL_FIELD_MARKERS = Set.of(
-            "apikey", "accesstoken", "refreshtoken", "authtoken", "bearertoken",
-            "password", "passwd", "credential", "credentials", "accesskey", "secretkey",
-            "privatekey", "clientsecret", "providerkey", "authorization");
+    private static final Pattern URI_WITH_USERINFO = Pattern.compile(
+            "(?i)^[a-z][a-z0-9+.-]*://[^/?#\\s]*@");
+    private static final Set<String> CREDENTIAL_FIELD_NAMES = Set.of(
+            "auth", "authorization", "apikey", "accesstoken", "refreshtoken", "authtoken",
+            "bearertoken", "token", "password", "passwd", "credential", "credentials",
+            "accesskey", "secretkey", "privatekey", "clientsecret", "providerkey",
+            "secret", "secrets");
     private static final Set<String> HOSTED_CAPABILITY_TYPES = Set.of("Agent", "MCP");
     private static final Set<String> NETWORK_PROTOCOLS = Set.of("HTTP", "HTTPS", "TCP");
-    private static final Set<String> PROVIDER_DIRECT_HOSTS = Set.of(
-            "api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com", "api.cohere.ai");
+    private static final List<String> INTERNAL_DNS_SUFFIXES = List.of(".internal", ".svc.cluster.local");
     private static final Set<String> ROOT_FIELDS = Set.of("apiVersion", "kind", "metadata", "release", "spec");
     private static final Set<String> METADATA_FIELDS = Set.of("name", "namespace", "version", "labels");
     private static final Set<String> RELEASE_FIELDS = Set.of("digest", "artifact", "source");
@@ -268,8 +273,8 @@ public final class CapabilityPackageParser {
                     throw invalid("unsupported network protocol");
                 }
                 String host = text(allowEntry, "host", "network.allow.host");
-                if (isProviderDirectHost(host)) {
-                    throw invalid("provider-direct model endpoints are forbidden");
+                if (!isInternalDnsHost(host)) {
+                    throw invalid("network.allow.host must be an internal DNS name");
                 }
                 JsonNode port = allowEntry.get("port");
                 if (!isValidPort(port)) {
@@ -301,7 +306,11 @@ public final class CapabilityPackageParser {
     }
 
     private BigDecimal cpuQuantity(ObjectNode values, String field, String path) {
-        var matcher = CPU_QUANTITY.matcher(text(values, field, path));
+        String value = text(values, field, path);
+        if (value.length() > MAX_RESOURCE_QUANTITY_LENGTH) {
+            throw invalid("invalid resource quantity");
+        }
+        var matcher = CPU_QUANTITY.matcher(value);
         if (!matcher.matches()) {
             throw invalid("invalid resource quantity");
         }
@@ -319,7 +328,11 @@ public final class CapabilityPackageParser {
     }
 
     private BigDecimal memoryQuantity(ObjectNode values, String field, String path) {
-        var matcher = MEMORY_QUANTITY.matcher(text(values, field, path));
+        String value = text(values, field, path);
+        if (value.length() > MAX_RESOURCE_QUANTITY_LENGTH) {
+            throw invalid("invalid resource quantity");
+        }
+        var matcher = MEMORY_QUANTITY.matcher(value);
         if (!matcher.matches()) {
             throw invalid("invalid resource quantity");
         }
@@ -368,14 +381,34 @@ public final class CapabilityPackageParser {
         }
     }
 
-    private boolean isProviderDirectHost(String host) {
+    private boolean isInternalDnsHost(String host) {
         String normalized = host.toLowerCase(Locale.ROOT);
         if (normalized.endsWith(".")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
+        if (normalized.length() > 253 || !hasValidDnsLabels(normalized)) {
+            return false;
+        }
         String candidate = normalized;
-        return PROVIDER_DIRECT_HOSTS.stream()
-                .anyMatch(provider -> candidate.equals(provider) || candidate.endsWith("." + provider));
+        return INTERNAL_DNS_SUFFIXES.stream()
+                .anyMatch(suffix -> candidate.length() > suffix.length() && candidate.endsWith(suffix));
+    }
+
+    private boolean hasValidDnsLabels(String host) {
+        for (String label : host.split("\\.", -1)) {
+            if (label.isEmpty() || label.length() > 63
+                    || !Character.isLetterOrDigit(label.charAt(0))
+                    || !Character.isLetterOrDigit(label.charAt(label.length() - 1))) {
+                return false;
+            }
+            for (int index = 1; index < label.length() - 1; index++) {
+                char character = label.charAt(index);
+                if (!Character.isLetterOrDigit(character) && character != '-') {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private boolean isValidPort(JsonNode port) {
@@ -466,6 +499,7 @@ public final class CapabilityPackageParser {
                 JsonNode child = objectNode.get(field);
                 String childPath = path.isEmpty() ? field : path + "." + field;
                 if (childPath.equals("spec.capabilities[].secrets")) {
+                    rejectUriUserinfo(child);
                     continue;
                 }
                 if (isCredentialField(field)
@@ -487,19 +521,35 @@ public final class CapabilityPackageParser {
         }
     }
 
+    private void rejectUriUserinfo(JsonNode node) {
+        if (node.isTextual() && URI_WITH_USERINFO.matcher(node.textValue().trim()).find()) {
+            throw invalid("inline credential material is forbidden");
+        }
+        Iterator<JsonNode> children = node.elements();
+        while (children.hasNext()) {
+            rejectUriUserinfo(children.next());
+        }
+    }
+
     private boolean isCredentialField(String field) {
         String normalized = field.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
-        if (CREDENTIAL_FIELD_MARKERS.stream().anyMatch(normalized::contains)) {
-            return true;
-        }
-        return normalized.equals("token") || normalized.endsWith("token")
-                || normalized.equals("secret") || normalized.endsWith("secret");
+        return CREDENTIAL_FIELD_NAMES.contains(normalized)
+                || normalized.endsWith("apikey")
+                || normalized.endsWith("token")
+                || normalized.endsWith("password")
+                || normalized.endsWith("credentials")
+                || normalized.endsWith("accesskey")
+                || normalized.endsWith("secretkey")
+                || normalized.endsWith("privatekey")
+                || normalized.endsWith("clientsecret")
+                || normalized.endsWith("authorization");
     }
 
     private boolean isInlineCredentialValue(String value) {
         String normalized = value.trim();
         return INLINE_CREDENTIAL_VALUE.matcher(normalized).matches()
                 || AWS_ACCESS_KEY.matcher(normalized).matches()
+                || URI_WITH_USERINFO.matcher(normalized).find()
                 || (normalized.startsWith("-----BEGIN ") && normalized.contains("PRIVATE KEY-----"));
     }
 
@@ -522,7 +572,7 @@ public final class CapabilityPackageParser {
     }
 
     private ObjectNode readRoot(String document) {
-        rejectAliases(document);
+        rejectAliasesAndMultipleDocuments(document);
         try {
             JsonNode root = yamlMapper.readTree(document);
             ObjectNode rootObject = requireObject(root, "document");
@@ -533,13 +583,21 @@ public final class CapabilityPackageParser {
         }
     }
 
-    private void rejectAliases(String document) {
+    private void rejectAliasesAndMultipleDocuments(String document) {
         try {
             Parser parser = new ParserImpl(new StreamReader(document), YAML_LOADER_OPTIONS);
+            int documentCount = 0;
             while (parser.peekEvent() != null) {
-                if (parser.getEvent() instanceof AliasEvent) {
+                var event = parser.getEvent();
+                if (event instanceof AliasEvent) {
                     throw invalid("invalid capability manifest");
                 }
+                if (event instanceof DocumentStartEvent && ++documentCount > 1) {
+                    throw invalid("invalid capability manifest");
+                }
+            }
+            if (documentCount != 1) {
+                throw invalid("invalid capability manifest");
             }
         } catch (YAMLException exception) {
             throw invalid("invalid capability manifest");
@@ -613,7 +671,7 @@ public final class CapabilityPackageParser {
 
     private String semanticVersion(ObjectNode parent, String field, String path) {
         String version = text(parent, field, path);
-        if (!SEMVER.matcher(version).matches()) {
+        if (version.length() > MAX_SEMANTIC_VERSION_LENGTH || !SEMVER.matcher(version).matches()) {
             throw invalid("invalid " + path);
         }
         return version;

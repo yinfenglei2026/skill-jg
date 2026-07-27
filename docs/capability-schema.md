@@ -2,7 +2,7 @@
 
 ## Contract Goals
 
-`capability.yaml` is the source contract for a release bundle. It is versioned independently from application code through `apiVersion`. Phase one supports `Agent` and `MCP` entries in the same governance model. Skill packages are imported, pinned dependencies of an Agent; they are not independently hosted runtime types in this phase.
+`capability.yaml` is the source contract for a release bundle. It is versioned independently from application code through `apiVersion`. Phase one supports `Agent` and `MCP` entries as hosted HTTP workload packages in the same governance model. Skill packages are imported, pinned dependencies of an Agent; they are not independently hosted runtime types in this phase. Every Agent must request at least one logical Model Gateway policy.
 
 The example below is normative for field shape but illustrative for values. Server-side schema validation and policy validation are both required: schema answers whether a field is well formed; policy answers whether a caller may request it.
 
@@ -173,11 +173,11 @@ spec:
 | `type` | Exactly `Agent` or `MCP` in phase one. |
 | `dependencies.capabilities` | Each dependency is pinned by version and digest; runtime substitution is prohibited. |
 | `dependencies.skills` | Imported content pinned by version and digest. Skill code/content is included in release evaluation and locking. |
-| `permissions` | Requested model policies, MCP tools and platform permissions. Empty means no permission. |
+| `permissions` | Requested model policies, MCP tools and platform permissions. Every Agent must request at least one logical Model Gateway model policy; MCP permission lists may be empty. |
 | `network.defaultDeny` | Must be `true`; every egress destination requires a declared rule and policy approval. |
-| `network.allow` | DNS/service destination, protocol and port. Wildcards and raw public CIDRs require an explicit elevated policy. |
+| `network.allow` | Phase one accepts only internal DNS names ending in `.internal` or `.svc.cluster.local`, plus protocol and port. Public hosts, IP literals and wildcards are rejected. |
 | `secrets[].ref` | Metadata-only pointer to an approved secret provider/key/version. Secret values are forbidden in the manifest. |
-| `resources` | Kubernetes-compatible requests/limits. Policy enforces nonzero requests and bounded limits. |
+| `resources` | Phase one intentionally supports the plan-defined quantity subset rather than full Kubernetes Quantity syntax: decimal CPU with optional `n`, `u` or `m`, and decimal memory with optional `Ki`, `Mi`, `Gi`, `Ti`, `k`, `M`, `G` or `T`. Policy enforces nonzero requests and bounded limits. |
 | `health` | Startup, readiness and liveness contracts. Hosted HTTP workloads must define all three. |
 | `runtimeProfile` | Policy-controlled hosted execution class and bounded runtime settings. It cannot grant permissions by itself. |
 
