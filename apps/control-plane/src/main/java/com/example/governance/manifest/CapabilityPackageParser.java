@@ -1,5 +1,6 @@
 package com.example.governance.manifest;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -8,6 +9,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -35,7 +37,19 @@ public final class CapabilityPackageParser {
     private static final String API_VERSION = "governance.platform.example/v1alpha1";
     private static final String KIND = "CapabilityPackage";
     private static final Pattern SHA256 = Pattern.compile("sha256:[a-f0-9]{64}");
+    private static final Pattern SEMVER = Pattern.compile(
+            "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)"
+                    + "(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)"
+                    + "(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?"
+                    + "(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$");
+    private static final Pattern CPU_QUANTITY = Pattern.compile(
+            "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(m)?");
+    private static final Pattern MEMORY_QUANTITY = Pattern.compile(
+            "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(Ki|Mi|Gi|Ti|k|M|G|T)?");
     private static final Set<String> HOSTED_CAPABILITY_TYPES = Set.of("Agent", "MCP");
+    private static final Set<String> NETWORK_PROTOCOLS = Set.of("HTTP", "HTTPS", "TCP");
+    private static final Set<String> PROVIDER_DIRECT_HOSTS = Set.of(
+            "api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com", "api.cohere.ai");
     private static final Set<String> ROOT_FIELDS = Set.of("apiVersion", "kind", "metadata", "release", "spec");
     private static final Set<String> METADATA_FIELDS = Set.of("name", "namespace", "version", "labels");
     private static final Set<String> RELEASE_FIELDS = Set.of("digest", "artifact", "source");
@@ -76,10 +90,14 @@ public final class CapabilityPackageParser {
         ObjectNode metadataNode = object(root, "metadata", "metadata");
         requireOnlyFields(metadataNode, METADATA_FIELDS, "metadata");
         validateLabels(metadataNode);
+        String metadataVersion = text(metadataNode, "version", "metadata.version");
+        if (!SEMVER.matcher(metadataVersion).matches()) {
+            throw invalid("invalid metadata.version");
+        }
         Metadata metadata = new Metadata(
                 text(metadataNode, "name", "metadata.name"),
                 text(metadataNode, "namespace", "metadata.namespace"),
-                text(metadataNode, "version", "metadata.version"));
+                metadataVersion);
 
         ObjectNode releaseNode = object(root, "release", "release");
         requireOnlyFields(releaseNode, RELEASE_FIELDS, "release");
@@ -116,6 +134,7 @@ public final class CapabilityPackageParser {
         if (!HOSTED_CAPABILITY_TYPES.contains(type)) {
             throw invalid("unsupported capability type");
         }
+        validatePermissions(node, type);
         ObjectNode dependencyGroups = object(node, "dependencies", "capability.dependencies");
         requireOnlyFields(dependencyGroups, DEPENDENCY_GROUP_FIELDS, "capability.dependencies");
         List<DependencyDefinition> dependencies = new ArrayList<>();
@@ -126,6 +145,8 @@ public final class CapabilityPackageParser {
         NetworkDefinition network = parseNetwork(networkNode);
 
         List<SecretDefinition> secrets = parseSecrets(node);
+        validateResources(node);
+        validateHealth(node);
         return new CapabilityDefinition(id, type, dependencies, network, secrets);
     }
 
@@ -159,6 +180,35 @@ public final class CapabilityPackageParser {
         }
     }
 
+    private void validatePermissions(ObjectNode capability, String type) {
+        JsonNode permissionsNode = capability.get("permissions");
+        if (!(permissionsNode instanceof ObjectNode permissions)) {
+            if (type.equals("Agent")) {
+                throw invalid("Agent permissions.modelPolicies must not be empty");
+            }
+            return;
+        }
+
+        JsonNode policiesNode = permissions.get("modelPolicies");
+        if (!(policiesNode instanceof ArrayNode policies)) {
+            if (type.equals("Agent")) {
+                throw invalid("Agent permissions.modelPolicies must not be empty");
+            }
+            if (policiesNode != null) {
+                throw invalid("permissions.modelPolicies must be an array");
+            }
+            return;
+        }
+        for (JsonNode policy : policies) {
+            if (!policy.isTextual() || policy.textValue().isBlank()) {
+                throw invalid("permissions.modelPolicies entries must be text");
+            }
+        }
+        if (type.equals("Agent") && policies.isEmpty()) {
+            throw invalid("Agent permissions.modelPolicies must not be empty");
+        }
+    }
+
     private NetworkDefinition parseNetwork(ObjectNode network) {
         requireOnlyFields(network, NETWORK_FIELDS, "network");
         JsonNode defaultDeny = network.get("defaultDeny");
@@ -174,15 +224,99 @@ public final class CapabilityPackageParser {
                 ObjectNode allowEntry = requireObject(allowEntryNode, "network.allow entry");
                 requireOnlyFields(allowEntry, NETWORK_ALLOW_FIELDS, "network.allow entry");
                 text(allowEntry, "name", "network.allow.name");
-                text(allowEntry, "protocol", "network.allow.protocol");
-                text(allowEntry, "host", "network.allow.host");
+                String protocol = text(allowEntry, "protocol", "network.allow.protocol");
+                if (!NETWORK_PROTOCOLS.contains(protocol)) {
+                    throw invalid("unsupported network protocol");
+                }
+                String host = text(allowEntry, "host", "network.allow.host");
+                if (isProviderDirectHost(host)) {
+                    throw invalid("provider-direct model endpoints are forbidden");
+                }
                 JsonNode port = allowEntry.get("port");
-                if (port == null || !port.isIntegralNumber()) {
-                    throw invalid("network.allow.port must be an integer");
+                if (!isValidPort(port)) {
+                    throw invalid("network.allow.port must be an integer between 1 and 65535");
                 }
             }
         }
         return new NetworkDefinition(true);
+    }
+
+    private void validateResources(ObjectNode capability) {
+        ObjectNode resources = object(capability, "resources", "capability.resources");
+        ObjectNode requests = object(resources, "requests", "resources.requests");
+        ObjectNode limits = object(resources, "limits", "resources.limits");
+
+        BigDecimal requestedCpu = cpuQuantity(requests, "cpu", "resources.requests.cpu");
+        BigDecimal requestedMemory = memoryQuantity(requests, "memory", "resources.requests.memory");
+        BigDecimal cpuLimit = cpuQuantity(limits, "cpu", "resources.limits.cpu");
+        BigDecimal memoryLimit = memoryQuantity(limits, "memory", "resources.limits.memory");
+        if (requestedCpu.signum() <= 0 || requestedMemory.signum() <= 0) {
+            throw invalid("resource request must be greater than zero");
+        }
+        if (cpuLimit.compareTo(requestedCpu) < 0 || memoryLimit.compareTo(requestedMemory) < 0) {
+            throw invalid("resource limit must be greater than or equal to request");
+        }
+    }
+
+    private BigDecimal cpuQuantity(ObjectNode values, String field, String path) {
+        var matcher = CPU_QUANTITY.matcher(text(values, field, path));
+        if (!matcher.matches()) {
+            throw invalid("invalid resource quantity");
+        }
+        BigDecimal quantity = new BigDecimal(matcher.group(1));
+        return matcher.group(2) == null ? quantity : quantity.movePointLeft(3);
+    }
+
+    private BigDecimal memoryQuantity(ObjectNode values, String field, String path) {
+        var matcher = MEMORY_QUANTITY.matcher(text(values, field, path));
+        if (!matcher.matches()) {
+            throw invalid("invalid resource quantity");
+        }
+        return new BigDecimal(matcher.group(1)).multiply(memoryMultiplier(matcher.group(2)));
+    }
+
+    private BigDecimal memoryMultiplier(String unit) {
+        if (unit == null) {
+            return BigDecimal.ONE;
+        }
+        return switch (unit) {
+            case "Ki" -> BigDecimal.valueOf(1024L);
+            case "Mi" -> BigDecimal.valueOf(1024L).pow(2);
+            case "Gi" -> BigDecimal.valueOf(1024L).pow(3);
+            case "Ti" -> BigDecimal.valueOf(1024L).pow(4);
+            case "k" -> BigDecimal.valueOf(1_000L);
+            case "M" -> BigDecimal.valueOf(1_000_000L);
+            case "G" -> BigDecimal.valueOf(1_000_000_000L);
+            case "T" -> BigDecimal.valueOf(1_000_000_000_000L);
+            default -> throw invalid("invalid resource quantity");
+        };
+    }
+
+    private void validateHealth(ObjectNode capability) {
+        ObjectNode health = object(capability, "health", "capability.health");
+        for (String probeName : List.of("startup", "readiness", "liveness")) {
+            ObjectNode probe = object(health, probeName, "health." + probeName);
+            ObjectNode httpGet = object(probe, "httpGet", "health." + probeName + ".httpGet");
+            text(httpGet, "path", "health." + probeName + ".httpGet.path");
+            if (!isValidPort(httpGet.get("port"))) {
+                throw invalid("health probe port must be an integer between 1 and 65535");
+            }
+        }
+    }
+
+    private boolean isProviderDirectHost(String host) {
+        String normalized = host.toLowerCase(Locale.ROOT);
+        if (normalized.endsWith(".")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        String candidate = normalized;
+        return PROVIDER_DIRECT_HOSTS.stream()
+                .anyMatch(provider -> candidate.equals(provider) || candidate.endsWith("." + provider));
+    }
+
+    private boolean isValidPort(JsonNode port) {
+        return port != null && port.isIntegralNumber() && port.canConvertToInt()
+                && port.intValue() >= 1 && port.intValue() <= 65535;
     }
 
     private List<SecretDefinition> parseSecrets(ObjectNode capability) {
@@ -240,6 +374,10 @@ public final class CapabilityPackageParser {
     }
 
     private void validateRelease(ObjectNode release) {
+        String digest = optionalText(release, "digest", "release.digest");
+        if (digest != null && !SHA256.matcher(digest).matches()) {
+            throw invalid("invalid release.digest");
+        }
         JsonNode artifactNode = release.get("artifact");
         if (artifactNode != null) {
             ObjectNode artifact = requireObject(artifactNode, "release.artifact");

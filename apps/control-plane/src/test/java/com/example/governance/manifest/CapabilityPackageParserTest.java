@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.Test;
 
 class CapabilityPackageParserTest {
+    private static final String RELEASE_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
     private static final String MCP_DIGEST = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String SKILL_DIGEST = "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
@@ -18,6 +19,7 @@ class CapabilityPackageParserTest {
         CapabilityPackage.CapabilityDefinition agent = capabilityPackage.capability("support-agent");
         assertThat(capabilityPackage.apiVersion()).isEqualTo("governance.platform.example/v1alpha1");
         assertThat(capabilityPackage.kind()).isEqualTo("CapabilityPackage");
+        assertThat(capabilityPackage.metadata().version()).isEqualTo("1.4.0");
         assertThat(agent.type()).isEqualTo("Agent");
         assertThat(agent.network().defaultDeny()).isTrue();
         assertThat(agent.dependencies()).extracting(CapabilityPackage.DependencyDefinition::type)
@@ -41,7 +43,7 @@ class CapabilityPackageParserTest {
     void removes_release_digest_when_canonicalizing_and_hashing_the_document() {
         CapabilityPackage capabilityPackage = parser.parse(validManifest());
 
-        assertThat(capabilityPackage.canonicalDocument()).doesNotContain("release-digest");
+        assertThat(capabilityPackage.canonicalDocument()).doesNotContain(RELEASE_DIGEST);
         assertThat(capabilityPackage.canonicalDigest()).matches("sha256:[a-f0-9]{64}");
     }
 
@@ -66,6 +68,26 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void accepts_semver_2_package_versions() {
+        CapabilityPackage prerelease = parser.parse(
+                validManifest().replace("version: 1.4.0", "version: 1.4.0-rc.1+build.7"));
+
+        assertThat(prerelease.metadata().version()).isEqualTo("1.4.0-rc.1+build.7");
+    }
+
+    @Test
+    void rejects_a_non_semver_package_version() {
+        assertInvalid(validManifest().replace("version: 1.4.0", "version: latest"),
+                "invalid metadata.version");
+    }
+
+    @Test
+    void rejects_an_invalid_release_digest() {
+        assertInvalid(validManifest().replace(RELEASE_DIGEST, "not-a-digest"),
+                "invalid release.digest");
+    }
+
+    @Test
     void rejects_an_unsupported_hosted_capability_type() {
         assertInvalid(validManifest().replace("type: Agent", "type: Plugin"),
                 "unsupported capability type");
@@ -81,6 +103,62 @@ class CapabilityPackageParserTest {
     void rejects_networking_without_default_deny() {
         assertInvalid(validManifest().replace("defaultDeny: true", "defaultDeny: false"),
                 "network.defaultDeny must be true");
+    }
+
+    @Test
+    void rejects_an_agent_without_a_model_policy() {
+        assertInvalid(validManifest().replace("modelPolicies:\n          - general-chat", "modelPolicies: []"),
+                "Agent permissions.modelPolicies must not be empty");
+    }
+
+    @Test
+    void rejects_provider_direct_model_endpoints() {
+        assertInvalid(validManifest().replace("model-gateway.platform.svc.cluster.local", "api.openai.com"),
+                "provider-direct model endpoints are forbidden");
+    }
+
+    @Test
+    void accepts_only_phase_one_network_protocols() {
+        for (String protocol : new String[] {"HTTP", "HTTPS", "TCP"}) {
+            parser.parse(validManifest().replace("protocol: HTTPS", "protocol: " + protocol));
+        }
+    }
+
+    @Test
+    void rejects_an_unsupported_network_protocol() {
+        assertInvalid(validManifest().replace("protocol: HTTPS", "protocol: FTP"),
+                "unsupported network protocol");
+    }
+
+    @Test
+    void rejects_a_network_port_outside_the_valid_range() {
+        assertInvalid(validManifest().replace("port: 8443", "port: 70000"),
+                "network.allow.port must be an integer between 1 and 65535");
+    }
+
+    @Test
+    void rejects_a_resource_limit_below_its_request() {
+        assertInvalid(validManifest().replace("cpu: \"1\"", "cpu: 10m"),
+                "resource limit must be greater than or equal to request");
+    }
+
+    @Test
+    void rejects_a_zero_resource_request() {
+        assertInvalid(validManifest().replace("cpu: 250m", "cpu: \"0\""),
+                "resource request must be greater than zero");
+    }
+
+    @Test
+    void rejects_an_unsupported_resource_quantity() {
+        assertInvalid(validManifest().replace("memory: 512Mi", "memory: 512MB"),
+                "invalid resource quantity");
+    }
+
+    @Test
+    void rejects_a_hosted_capability_without_every_health_probe() {
+        assertInvalid(validManifest().replace(
+                "        liveness:\n          httpGet: { path: /health/live, port: 8080 }\n", ""),
+                "missing required health.liveness");
     }
 
     @Test
@@ -128,19 +206,10 @@ class CapabilityPackageParserTest {
 
     @Test
     void rejects_duplicate_capability_ids() {
-        String duplicate = "  capabilities:\n"
-                + "    - id: support-agent\n"
-                + "      type: Agent\n"
-                + "      dependencies:\n"
-                + "        capabilities: []\n"
-                + "        skills: []\n"
-                + "      network:\n"
-                + "        defaultDeny: true\n"
-                + "      secrets: []\n"
-                + "    - id: support-agent";
-        String duplicated = validManifest().replace("  capabilities:\n    - id: support-agent", duplicate);
+        String manifest = validManifest();
+        String capability = manifest.substring(manifest.indexOf("    - id: support-agent"));
 
-        assertInvalid(duplicated, "duplicate capability id");
+        assertInvalid(manifest + capability, "duplicate capability id");
     }
 
     @Test
@@ -191,11 +260,14 @@ class CapabilityPackageParserTest {
                   namespace: customer-operations
                   version: 1.4.0
                 release:
-                  digest: sha256:release-digest
+                  digest: %s
                 spec:
                   capabilities:
                     - id: support-agent
                       type: Agent
+                      permissions:
+                        modelPolicies:
+                          - general-chat
                       dependencies:
                         capabilities:
                           - id: customer-records
@@ -209,13 +281,32 @@ class CapabilityPackageParserTest {
                             importPath: skills/support-policy
                       network:
                         defaultDeny: true
+                        allow:
+                          - name: model-gateway
+                            protocol: HTTPS
+                            host: model-gateway.platform.svc.cluster.local
+                            port: 8443
                       secrets:
                         - name: crm-client
                           ref:
                             provider: platform-secret-store
                             key: customer-operations/crm-client
                             version: \"12\"
-                """.formatted(MCP_DIGEST, SKILL_DIGEST);
+                      resources:
+                        requests:
+                          cpu: 250m
+                          memory: 512Mi
+                        limits:
+                          cpu: \"1\"
+                          memory: 1Gi
+                      health:
+                        startup:
+                          httpGet: { path: /health/startup, port: 8080 }
+                        readiness:
+                          httpGet: { path: /health/ready, port: 8080 }
+                        liveness:
+                          httpGet: { path: /health/live, port: 8080 }
+                """.formatted(RELEASE_DIGEST, MCP_DIGEST, SKILL_DIGEST);
     }
 
     private String reorderedValidManifest() {
@@ -223,8 +314,27 @@ class CapabilityPackageParserTest {
                 kind: CapabilityPackage
                 spec:
                   capabilities:
-                    - network:
+                    - health:
+                        liveness:
+                          httpGet: { port: 8080, path: /health/live }
+                        startup:
+                          httpGet: { port: 8080, path: /health/startup }
+                        readiness:
+                          httpGet: { port: 8080, path: /health/ready }
+                      resources:
+                        limits:
+                          memory: 1Gi
+                          cpu: \"1\"
+                        requests:
+                          memory: 512Mi
+                          cpu: 250m
+                      network:
                         defaultDeny: true
+                        allow:
+                          - port: 8443
+                            host: model-gateway.platform.svc.cluster.local
+                            protocol: HTTPS
+                            name: model-gateway
                       secrets:
                         - ref:
                             key: customer-operations/crm-client
@@ -242,15 +352,18 @@ class CapabilityPackageParserTest {
                             version: 2.3.1
                             id: customer-records
                             type: MCP
+                      permissions:
+                        modelPolicies:
+                          - general-chat
                       type: Agent
                       id: support-agent
                 release:
-                  digest: sha256:release-digest
+                  digest: %s
                 metadata:
                   version: 1.4.0
                   namespace: customer-operations
                   name: support-assistant
                 apiVersion: governance.platform.example/v1alpha1
-                """.formatted(SKILL_DIGEST, MCP_DIGEST);
+                """.formatted(SKILL_DIGEST, MCP_DIGEST, RELEASE_DIGEST);
     }
 }
