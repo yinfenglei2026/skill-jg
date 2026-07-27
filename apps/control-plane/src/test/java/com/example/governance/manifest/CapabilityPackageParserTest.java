@@ -36,7 +36,7 @@ class CapabilityPackageParserTest {
         CapabilityPackage capabilityPackage = parser.parse(validManifest());
 
         assertThat(capabilityPackage.canonicalDocument()).doesNotContain("release-digest");
-        assertThat(capabilityPackage.sha256()).matches("sha256:[a-f0-9]{64}");
+        assertThat(capabilityPackage.canonicalDigest()).matches("sha256:[a-f0-9]{64}");
     }
 
     @Test
@@ -45,7 +45,7 @@ class CapabilityPackageParserTest {
         CapabilityPackage reordered = parser.parse(reorderedValidManifest());
 
         assertThat(reordered.canonicalDocument()).isEqualTo(first.canonicalDocument());
-        assertThat(reordered.sha256()).isEqualTo(first.sha256());
+        assertThat(reordered.canonicalDigest()).isEqualTo(first.canonicalDigest());
     }
 
     @Test

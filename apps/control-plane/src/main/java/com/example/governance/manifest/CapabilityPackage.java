@@ -9,7 +9,7 @@ public record CapabilityPackage(
         ReleaseDescriptor release,
         List<CapabilityDefinition> capabilities,
         String canonicalDocument,
-        String sha256) {
+        String canonicalDigest) {
 
     public CapabilityPackage {
         capabilities = List.copyOf(capabilities);
