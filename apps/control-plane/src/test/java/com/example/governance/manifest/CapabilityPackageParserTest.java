@@ -79,16 +79,69 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_arbitrary_inline_secret_fields_without_disclosing_values() {
+        assertInvalid(validManifest().replace("name: crm-client\n          ref:",
+                "name: crm-client\n          token: super-secret\n          ref:"),
+                "unexpected field in secret");
+    }
+
+    @Test
+    void rejects_duplicate_yaml_mapping_keys() {
+        assertInvalid(validManifest().replace("kind: CapabilityPackage",
+                "kind: CapabilityPackage\nkind: CapabilityPackage"),
+                "invalid capability manifest");
+    }
+
+    @Test
+    void rejects_yaml_aliases() {
+        String aliased = validManifest()
+                .replace("metadata:\n", "metadata: &packageMetadata\n")
+                .replace("release:\n", "release:\n  source: *packageMetadata\n");
+
+        assertInvalid(aliased, "invalid capability manifest");
+    }
+
+    @Test
+    void rejects_non_text_values_for_textual_fields() {
+        assertInvalid(validManifest().replace("name: support-assistant", "name: 42"),
+                "metadata.name must be text");
+    }
+
+    @Test
+    void rejects_unexpected_fields_in_modeled_security_structures() {
+        assertInvalid(validManifest().replace("type: MCP\n            version:",
+                "type: MCP\n            endpoint: https://unapproved.example\n            version:"),
+                "unexpected field in dependency");
+    }
+
+    @Test
+    void rejects_duplicate_capability_ids() {
+        String duplicate = "  capabilities:\n"
+                + "    - id: support-agent\n"
+                + "      type: Agent\n"
+                + "      dependencies:\n"
+                + "        capabilities: []\n"
+                + "        skills: []\n"
+                + "      network:\n"
+                + "        defaultDeny: true\n"
+                + "      secrets: []\n"
+                + "    - id: support-agent";
+        String duplicated = validManifest().replace("  capabilities:\n    - id: support-agent", duplicate);
+
+        assertInvalid(duplicated, "duplicate capability id");
+    }
+
+    @Test
     void rejects_dependencies_without_a_sha256_digest() {
         assertInvalid(validManifest().replace(MCP_DIGEST, "sha512:0123456789abcdef"),
                 "dependency digest must be a sha256 digest");
-        assertInvalid(validManifest().replace("digest: " + MCP_DIGEST, "missingDigest: true"),
+        assertInvalid(validManifest().replace("            digest: " + MCP_DIGEST + "\n", ""),
                 "dependency digest must be a sha256 digest");
     }
 
     @Test
     void rejects_a_skill_dependency_without_a_name() {
-        assertInvalid(validManifest().replace("name: support-policy", "missingName: true"),
+        assertInvalid(validManifest().replace("- name: support-policy", "-"),
                 "missing required dependency.name");
     }
 
