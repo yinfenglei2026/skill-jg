@@ -3,12 +3,16 @@ package com.example.governance.api;
 import com.example.governance.audit.AuditEvent;
 import com.example.governance.capability.Capability;
 import com.example.governance.capability.CapabilityType;
+import com.example.governance.deployment.DeploymentIntent;
+import com.example.governance.deployment.DeploymentService;
+import com.example.governance.deployment.DeploymentStatus;
 import com.example.governance.release.Release;
 import com.example.governance.release.ReleaseDependency;
 import com.example.governance.release.ReleaseState;
 import com.example.governance.release.VerificationEvidence;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,9 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class GovernanceController {
     private final GovernanceService service;
+    private final DeploymentService deploymentService;
 
-    public GovernanceController(GovernanceService service) {
+    public GovernanceController(GovernanceService service, DeploymentService deploymentService) {
         this.service = service;
+        this.deploymentService = deploymentService;
     }
 
     @PostMapping("/capabilities")
@@ -92,28 +98,17 @@ public class GovernanceController {
         return ReleaseResponse.from(service.publish(releaseId));
     }
 
-    @PostMapping("/releases/{releaseId}/deploying")
+    @PostMapping("/releases/{releaseId}/deployments")
+    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('OPERATOR')")
-    ReleaseResponse deploying(@PathVariable String releaseId) {
-        return ReleaseResponse.from(service.deploying(releaseId));
+    DeploymentResponse deploy(@PathVariable String releaseId) {
+        return DeploymentResponse.from(deploymentService.deploy(releaseId));
     }
 
-    @PostMapping("/releases/{releaseId}/deployed")
-    @PreAuthorize("hasRole('OPERATOR')")
-    ReleaseResponse deployed(@PathVariable String releaseId) {
-        return ReleaseResponse.from(service.deployed(releaseId));
-    }
-
-    @PostMapping("/releases/{releaseId}/degraded")
-    @PreAuthorize("hasRole('OPERATOR')")
-    ReleaseResponse degraded(@PathVariable String releaseId) {
-        return ReleaseResponse.from(service.degraded(releaseId));
-    }
-
-    @PostMapping("/releases/{releaseId}/failed")
-    @PreAuthorize("hasRole('OPERATOR')")
-    ReleaseResponse failed(@PathVariable String releaseId) {
-        return ReleaseResponse.from(service.failed(releaseId));
+    @GetMapping("/releases/{releaseId}/deployment")
+    @PreAuthorize("hasAnyRole('OWNER', 'REVIEWER', 'APPROVER', 'OPERATOR', 'READ_ONLY')")
+    DeploymentResponse deployment(@PathVariable String releaseId) {
+        return DeploymentResponse.from(deploymentService.deployment(releaseId));
     }
 
     @PostMapping("/releases/{releaseId}/reject")
@@ -167,6 +162,16 @@ public class GovernanceController {
     record EvidenceResponse(String type, String subject, String digest) {
         static EvidenceResponse from(VerificationEvidence evidence) {
             return new EvidenceResponse(evidence.type(), evidence.subject(), evidence.digest());
+        }
+    }
+
+    record DeploymentResponse(String id, String releaseId, String department, String digest,
+                              String observedDigest, DeploymentStatus status, String requestedActor,
+                              Instant requestedAt, Instant observedAt) {
+        static DeploymentResponse from(DeploymentIntent intent) {
+            return new DeploymentResponse(intent.id(), intent.releaseId(), intent.department(),
+                    intent.desiredDigest(), intent.observedDigest(), intent.status(), intent.requestedActor(),
+                    intent.requestedAt(), intent.observedAt());
         }
     }
 }

@@ -164,6 +164,16 @@ class GovernanceApiTest {
     }
 
     @Test
+    void rejects_unauthenticated_and_wrong_role_deployment_requests() throws Exception {
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void rejects_malformed_or_mutable_artifact_references() throws Exception {
         createCapability("records-mcp", "MCP");
         ManifestFixture manifest = manifest("records-mcp", "MCP", "1.0.0", List.of());
@@ -225,49 +235,87 @@ class GovernanceApiTest {
     }
 
     @Test
-    void records_deployment_failure_and_allows_a_retry() throws Exception {
-        createPublishedRelease();
+    void reconciles_a_published_release_to_a_ready_deployment() throws Exception {
+        ManifestFixture published = createPublishedRelease();
 
-        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
-                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+        String digest = published.digest();
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.releaseId").value("support-agent:1.0.0"))
+                .andExpect(jsonPath("$.digest").value(digest))
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.observedDigest").value(digest));
+
+        mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0/deployment")
+                        .with(as("READ_ONLY", "reader@example.internal")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("DEPLOYING"));
-        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployed")
-                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+                .andExpect(jsonPath("$.releaseId").value("support-agent:1.0.0"))
+                .andExpect(jsonPath("$.observedDigest").value(digest))
+                .andExpect(jsonPath("$.status").value("READY"));
+
+        mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0")
+                        .with(as("READ_ONLY", "reader@example.internal")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("DEPLOYED"));
-        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/degraded")
-                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+
+        mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0/deployment")
+                        .with(as("READ_ONLY", "finance-reader@example.internal", "finance")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/audit-events")
+                        .with(as("READ_ONLY", "auditor@example.internal")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("DEGRADED"));
-        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/failed")
-                        .with(as("OPERATOR", "runtime-controller@example.internal")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("FAILED"));
+                .andExpect(jsonPath("$[?(@.action == 'DEPLOYMENT_REQUESTED')]", hasSize(1)))
+                .andExpect(jsonPath("$[?(@.action == 'RELEASE_DEPLOYING')]", hasSize(1)))
+                .andExpect(jsonPath("$[?(@.action == 'RELEASE_DEPLOYED')]", hasSize(1)));
+
         mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
-                        .with(as("OPERATOR", "runtime-controller@example.internal")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("DEPLOYING"));
+                        .with(as("OPERATOR", "operator@example.internal")))
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void refuses_to_deploy_a_revoked_release() throws Exception {
+    void rejects_deployment_of_draft_unapproved_and_revoked_releases() throws Exception {
+        createCapability("draft-agent", "AGENT");
+        ManifestFixture draft = manifest("draft-agent", "Agent", "1.0.0", List.of());
+        registerRelease("draft-agent", "1.0.0", draft).andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/releases/draft-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_RELEASE_TRANSITION"));
+
+        createCapability("unapproved-agent", "AGENT");
+        ManifestFixture unapproved = manifest("unapproved-agent", "Agent", "1.0.0", List.of());
+        registerRelease("unapproved-agent", "1.0.0", unapproved).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/releases/unapproved-agent:1.0.0/validate")
+                        .with(as("REVIEWER", "reviewer@example.internal")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/releases/unapproved-agent:1.0.0/review-required")
+                        .with(as("REVIEWER", "reviewer@example.internal")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/releases/unapproved-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_RELEASE_TRANSITION"));
+
         createPublishedRelease();
 
         mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/revoke")
                         .with(as("OPERATOR", "runtime-controller@example.internal")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("REVOKED"));
-        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
-                        .with(as("OPERATOR", "runtime-controller@example.internal")))
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_RELEASE_TRANSITION"));
 
         mockMvc.perform(get("/api/v1/audit-events")
                         .with(as("READ_ONLY", "auditor@example.internal")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.action == 'RELEASE_TRANSITION_DENIED')]", hasSize(1)))
-                .andExpect(jsonPath("$[?(@.decision == 'DENY')]", hasSize(1)));
+                .andExpect(jsonPath("$[?(@.action == 'RELEASE_TRANSITION_DENIED')]", hasSize(3)))
+                .andExpect(jsonPath("$[?(@.decision == 'DENY')]", hasSize(3)));
     }
 
     @Test
@@ -292,7 +340,7 @@ class GovernanceApiTest {
                 .andExpect(status().isForbidden());
     }
 
-    private void createPublishedRelease() throws Exception {
+    private ManifestFixture createPublishedRelease() throws Exception {
         createCapability("support-agent", "AGENT");
         ManifestFixture manifest = manifest("support-agent", "Agent", "1.0.0", List.of());
         registerRelease("support-agent", "1.0.0", manifest).andExpect(status().isCreated());
@@ -308,6 +356,7 @@ class GovernanceApiTest {
         mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/publish")
                         .with(as("OPERATOR", "release-bot@example.internal")))
                 .andExpect(status().isOk());
+        return manifest;
     }
 
     private void createCapability(String id, String type) throws Exception {

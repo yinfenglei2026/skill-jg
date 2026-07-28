@@ -3,6 +3,7 @@ package com.example.governance.api;
 import com.example.governance.release.InvalidArtifactReferenceException;
 import com.example.governance.release.InvalidReleaseTransitionException;
 import com.example.governance.release.ArtifactVerificationException;
+import com.example.governance.deployment.DeploymentIntegrationUnavailableException;
 import com.example.governance.manifest.InvalidCapabilityManifestException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,5 +36,12 @@ class ApiExceptionHandler {
     @ExceptionHandler(InvalidCapabilityManifestException.class)
     ResponseEntity<ApiError> invalidCapabilityManifest(InvalidCapabilityManifestException exception) {
         return ResponseEntity.badRequest().body(new ApiError("INVALID_CAPABILITY_MANIFEST", exception.getMessage()));
+    }
+
+    @ExceptionHandler(DeploymentIntegrationUnavailableException.class)
+    ResponseEntity<ApiError> deploymentIntegrationUnavailable(
+            DeploymentIntegrationUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiError("DEPLOYMENT_INTEGRATION_UNAVAILABLE", exception.getMessage()));
     }
 }
