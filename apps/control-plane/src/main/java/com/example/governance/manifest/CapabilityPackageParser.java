@@ -382,28 +382,42 @@ public final class CapabilityPackageParser {
     }
 
     private boolean isInternalDnsHost(String host) {
-        if (host.length() > 253 || !hasValidDnsLabels(host)) {
+        if (host.length() > 253 || !isAsciiLowercaseDnsHost(host) || !hasValidDnsLabels(host)) {
             return false;
         }
         return INTERNAL_DNS_SUFFIXES.stream()
                 .anyMatch(suffix -> host.length() > suffix.length() && host.endsWith(suffix));
     }
 
+    private boolean isAsciiLowercaseDnsHost(String host) {
+        for (int index = 0; index < host.length(); index++) {
+            char character = host.charAt(index);
+            if (!isAsciiLowercaseLetterOrDigit(character) && character != '-' && character != '.') {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private boolean hasValidDnsLabels(String host) {
         for (String label : host.split("\\.", -1)) {
             if (label.isEmpty() || label.length() > 63
-                    || !Character.isLetterOrDigit(label.charAt(0))
-                    || !Character.isLetterOrDigit(label.charAt(label.length() - 1))) {
+                    || !isAsciiLowercaseLetterOrDigit(label.charAt(0))
+                    || !isAsciiLowercaseLetterOrDigit(label.charAt(label.length() - 1))) {
                 return false;
             }
             for (int index = 1; index < label.length() - 1; index++) {
                 char character = label.charAt(index);
-                if (!Character.isLetterOrDigit(character) && character != '-') {
+                if (!isAsciiLowercaseLetterOrDigit(character) && character != '-') {
                     return false;
                 }
             }
         }
         return true;
+    }
+
+    private boolean isAsciiLowercaseLetterOrDigit(char character) {
+        return character >= 'a' && character <= 'z' || character >= '0' && character <= '9';
     }
 
     private boolean isValidPort(JsonNode port) {

@@ -261,6 +261,14 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_mixed_case_internal_network_hosts() {
+        assertInvalid(validManifest().replace(
+                        "model-gateway.platform.svc.cluster.local",
+                        "Model-gateway.platform.svc.cluster.local"),
+                "network.allow.host must be an internal DNS name");
+    }
+
+    @Test
     void rejects_trailing_dot_internal_network_hosts() {
         assertInvalid(validManifest().replace(
                         "model-gateway.platform.svc.cluster.local",
