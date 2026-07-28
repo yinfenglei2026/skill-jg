@@ -26,7 +26,8 @@ if (-not $standardComposeAvailable) {
     $composePrefix = @()
 }
 
-& $maven -B -pl apps/control-plane verify
+$mavenCommand = "call `"$maven`" -B -pl apps/control-plane verify"
+& $env:ComSpec /d /s /c $mavenCommand
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
