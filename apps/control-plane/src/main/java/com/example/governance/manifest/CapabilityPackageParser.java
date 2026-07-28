@@ -35,7 +35,9 @@ import org.yaml.snakeyaml.events.DocumentStartEvent;
 import org.yaml.snakeyaml.parser.Parser;
 import org.yaml.snakeyaml.parser.ParserImpl;
 import org.yaml.snakeyaml.reader.StreamReader;
+import org.springframework.stereotype.Component;
 
+@Component
 public final class CapabilityPackageParser {
     private static final String API_VERSION = "governance.platform.example/v1alpha1";
     private static final String KIND = "CapabilityPackage";

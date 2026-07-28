@@ -4,7 +4,9 @@ import com.example.governance.audit.AuditEvent;
 import com.example.governance.capability.Capability;
 import com.example.governance.capability.CapabilityType;
 import com.example.governance.release.Release;
+import com.example.governance.release.ReleaseDependency;
 import com.example.governance.release.ReleaseState;
+import com.example.governance.release.VerificationEvidence;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
@@ -38,7 +40,8 @@ public class GovernanceController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('OPERATOR')")
     ReleaseResponse createRelease(@PathVariable String capabilityId, @Valid @RequestBody CreateReleaseRequest request) {
-        return ReleaseResponse.from(service.createRelease(capabilityId, request.version(), request.artifactReference()));
+        return ReleaseResponse.from(service.createRelease(
+                capabilityId, request.version(), request.artifactReference(), request.manifest()));
     }
 
     @GetMapping("/capabilities")
@@ -134,7 +137,7 @@ public class GovernanceController {
     record CreateCapabilityRequest(@NotBlank String name, @NotBlank String department, CapabilityType type) {
     }
 
-    record CreateReleaseRequest(@NotBlank String version, @NotBlank String artifactReference) {
+    record CreateReleaseRequest(@NotBlank String version, @NotBlank String artifactReference, @NotBlank String manifest) {
     }
 
     record CapabilityResponse(String id, String department, CapabilityType type) {
@@ -143,9 +146,27 @@ public class GovernanceController {
         }
     }
 
-    record ReleaseResponse(String id, String capabilityId, String version, String artifactReference, String digest, ReleaseState state) {
+    record ReleaseResponse(String id, String capabilityId, String version, String artifactReference, String digest,
+                           String manifestDigest, List<DependencyResponse> dependencies,
+                           List<EvidenceResponse> evidence, ReleaseState state) {
         static ReleaseResponse from(Release release) {
-            return new ReleaseResponse(release.id(), release.capabilityId(), release.version(), release.artifactReference(), release.digest(), release.state());
+            return new ReleaseResponse(release.id(), release.capabilityId(), release.version(), release.artifactReference(),
+                    release.digest(), release.manifestDigest(),
+                    release.dependencies().stream().map(DependencyResponse::from).toList(),
+                    release.evidence().stream().map(EvidenceResponse::from).toList(), release.state());
+        }
+    }
+
+    record DependencyResponse(String capabilityId, String type, String version, String digest) {
+        static DependencyResponse from(ReleaseDependency dependency) {
+            return new DependencyResponse(dependency.capabilityId(), dependency.type(), dependency.version(),
+                    dependency.digest());
+        }
+    }
+
+    record EvidenceResponse(String type, String subject, String digest) {
+        static EvidenceResponse from(VerificationEvidence evidence) {
+            return new EvidenceResponse(evidence.type(), evidence.subject(), evidence.digest());
         }
     }
 }

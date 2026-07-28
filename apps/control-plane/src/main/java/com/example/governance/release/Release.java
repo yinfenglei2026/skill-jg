@@ -10,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
@@ -18,6 +19,8 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "releases")
@@ -38,6 +41,14 @@ public class Release {
     @Column(nullable = false, updatable = false, length = 71)
     private String digest;
 
+    @Lob
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "canonical_manifest", nullable = false, updatable = false, columnDefinition = "TEXT")
+    private String canonicalManifest;
+
+    @Column(name = "manifest_digest", nullable = false, updatable = false, length = 71)
+    private String manifestDigest;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -53,6 +64,16 @@ public class Release {
     @OrderColumn(name = "transition_order")
     private List<ReleaseTransition> transitions = new ArrayList<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "release_dependencies", joinColumns = @JoinColumn(name = "release_id"))
+    @OrderColumn(name = "dependency_order")
+    private List<ReleaseDependency> dependencies = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "release_evidence", joinColumns = @JoinColumn(name = "release_id"))
+    @OrderColumn(name = "evidence_order")
+    private List<VerificationEvidence> evidence = new ArrayList<>();
+
     @Version
     @Column(name = "entity_version", nullable = false)
     private long entityVersion;
@@ -60,17 +81,31 @@ public class Release {
     protected Release() {
     }
 
-    private Release(String capabilityId, String version, String artifactReference, String digest, Instant createdAt) {
+    private Release(String capabilityId, String version, String artifactReference, String digest,
+                    String canonicalManifest, String manifestDigest, List<ReleaseDependency> dependencies,
+                    List<VerificationEvidence> evidence, Instant createdAt) {
         this.id = releaseId(capabilityId, version);
         this.capabilityId = capabilityId;
         this.version = version;
         this.artifactReference = artifactReference;
         this.digest = digest;
+        this.canonicalManifest = canonicalManifest;
+        this.manifestDigest = manifestDigest;
+        this.dependencies.addAll(dependencies);
+        this.evidence.addAll(evidence);
         this.createdAt = createdAt;
     }
 
     public static Release draft(String capabilityId, String version, String artifactReference, String digest, Instant createdAt) {
-        return new Release(capabilityId, version, artifactReference, digest, createdAt);
+        return draft(capabilityId, version, artifactReference, digest, "{}", digest, List.of(), List.of(), createdAt);
+    }
+
+    public static Release draft(String capabilityId, String version, String artifactReference, String digest,
+                                String canonicalManifest, String manifestDigest,
+                                List<ReleaseDependency> dependencies, List<VerificationEvidence> evidence,
+                                Instant createdAt) {
+        return new Release(capabilityId, version, artifactReference, digest, canonicalManifest, manifestDigest,
+                List.copyOf(dependencies), List.copyOf(evidence), createdAt);
     }
 
     public void validationPassed(String actor, Instant occurredAt) {
@@ -148,6 +183,22 @@ public class Release {
 
     public String artifactReference() {
         return artifactReference;
+    }
+
+    public String canonicalManifest() {
+        return canonicalManifest;
+    }
+
+    public String manifestDigest() {
+        return manifestDigest;
+    }
+
+    public List<ReleaseDependency> dependencies() {
+        return List.copyOf(dependencies);
+    }
+
+    public List<VerificationEvidence> evidence() {
+        return List.copyOf(evidence);
     }
 
     public Instant createdAt() {

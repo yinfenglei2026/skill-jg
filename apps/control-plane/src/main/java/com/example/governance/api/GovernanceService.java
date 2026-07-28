@@ -6,11 +6,17 @@ import com.example.governance.audit.AuditService;
 import com.example.governance.capability.Capability;
 import com.example.governance.capability.CapabilityRepository;
 import com.example.governance.capability.CapabilityType;
+import com.example.governance.manifest.CapabilityPackage;
+import com.example.governance.manifest.CapabilityPackageParser;
+import com.example.governance.manifest.InvalidCapabilityManifestException;
 import com.example.governance.release.ArtifactReference;
 import com.example.governance.release.ArtifactVerifier;
+import com.example.governance.release.DependencyResolver;
 import com.example.governance.release.InvalidReleaseTransitionException;
 import com.example.governance.release.Release;
+import com.example.governance.release.ReleaseDependency;
 import com.example.governance.release.ReleaseRepository;
+import com.example.governance.release.VerificationEvidence;
 import com.example.governance.security.Actor;
 import com.example.governance.security.CurrentActor;
 import java.time.Clock;
@@ -30,23 +36,30 @@ public class GovernanceService {
     private final AuditService auditService;
     private final CurrentActor currentActor;
     private final ArtifactVerifier artifactVerifier;
+    private final CapabilityPackageParser manifestParser;
+    private final DependencyResolver dependencyResolver;
 
     @Autowired
     public GovernanceService(CapabilityRepository capabilities, ReleaseRepository releases,
                              AuditEventRepository auditEvents, AuditService auditService, CurrentActor currentActor,
-                             ArtifactVerifier artifactVerifier) {
-        this(capabilities, releases, auditEvents, auditService, currentActor, artifactVerifier, Clock.systemUTC());
+                             ArtifactVerifier artifactVerifier, CapabilityPackageParser manifestParser,
+                             DependencyResolver dependencyResolver) {
+        this(capabilities, releases, auditEvents, auditService, currentActor, artifactVerifier, manifestParser,
+                dependencyResolver, Clock.systemUTC());
     }
 
     GovernanceService(CapabilityRepository capabilities, ReleaseRepository releases,
                       AuditEventRepository auditEvents, AuditService auditService, CurrentActor currentActor,
-                      ArtifactVerifier artifactVerifier, Clock clock) {
+                      ArtifactVerifier artifactVerifier, CapabilityPackageParser manifestParser,
+                      DependencyResolver dependencyResolver, Clock clock) {
         this.capabilities = capabilities;
         this.releases = releases;
         this.auditEvents = auditEvents;
         this.auditService = auditService;
         this.currentActor = currentActor;
         this.artifactVerifier = artifactVerifier;
+        this.manifestParser = manifestParser;
+        this.dependencyResolver = dependencyResolver;
         this.clock = clock;
     }
 
@@ -61,13 +74,23 @@ public class GovernanceService {
     }
 
     @Transactional
-    public Release createRelease(String capabilityId, String version, String artifactReference) {
+    public Release createRelease(String capabilityId, String version, String artifactReference, String manifestDocument) {
         Actor actor = currentActor.require();
         Capability capability = requireCapability(capabilityId);
         requireDepartment(actor, capability.department());
+        CapabilityPackage manifest = manifestParser.parse(manifestDocument);
+        validateManifest(capability, capabilityId, version, manifest);
         ArtifactReference artifact = ArtifactReference.parse(artifactReference);
-        artifactVerifier.verify(artifact);
-        Release release = Release.draft(capabilityId, version, artifact.value(), artifact.digest(), now());
+        if (!artifact.digest().equals(manifest.canonicalDigest())) {
+            throw new InvalidCapabilityManifestException("artifact digest does not match canonical manifest digest");
+        }
+        if (manifest.release().digest() != null && !artifact.digest().equals(manifest.release().digest())) {
+            throw new InvalidCapabilityManifestException("release digest does not match artifact digest");
+        }
+        List<ReleaseDependency> locks = dependencyResolver.resolve(manifest, capabilityId);
+        VerificationEvidence evidence = artifactVerifier.verify(artifact);
+        Release release = Release.draft(capabilityId, version, artifact.value(), artifact.digest(),
+                manifest.canonicalDocument(), manifest.canonicalDigest(), locks, List.of(evidence), now());
         releases.save(release);
         auditService.record(actor, "RELEASE_REGISTERED", releaseId(capabilityId, version), "ALLOW", release.digest(),
                 now());
@@ -188,6 +211,19 @@ public class GovernanceService {
     private void requireDepartment(Actor actor, String department) {
         if (!actor.department().equals(department)) {
             throw new AccessDeniedException("JWT department is not authorized for this capability");
+        }
+    }
+
+    private void validateManifest(Capability capability, String capabilityId, String version, CapabilityPackage manifest) {
+        if (!capability.department().equals(manifest.metadata().namespace())) {
+            throw new InvalidCapabilityManifestException("manifest metadata.namespace does not match capability department");
+        }
+        if (!version.equals(manifest.metadata().version())) {
+            throw new InvalidCapabilityManifestException("manifest metadata.version does not match request version");
+        }
+        CapabilityPackage.CapabilityDefinition manifestCapability = manifest.capability(capabilityId);
+        if (!capability.type().name().equalsIgnoreCase(manifestCapability.type())) {
+            throw new InvalidCapabilityManifestException("manifest capability type does not match registered capability");
         }
     }
 

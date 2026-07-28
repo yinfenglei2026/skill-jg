@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @Profile("test")
 public class TestArtifactVerifier implements ArtifactVerifier {
     @Override
-    public void verify(ArtifactReference artifact) {
-        // Tests cover registration behavior without requiring a live OCI registry.
+    public VerificationEvidence verify(ArtifactReference artifact) {
+        return new VerificationEvidence("TEST_ATTESTATION", artifact.value(), artifact.digest());
     }
 }

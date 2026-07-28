@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile("!test")
+@Profile("!test & !local")
 public class RegistryArtifactVerifier implements ArtifactVerifier {
     private static final String OCI_ACCEPT = String.join(", ",
             "application/vnd.oci.image.manifest.v1+json",
@@ -37,7 +37,7 @@ public class RegistryArtifactVerifier implements ArtifactVerifier {
     }
 
     @Override
-    public void verify(ArtifactReference artifact) {
+    public VerificationEvidence verify(ArtifactReference artifact) {
         if (!allowedRegistry.equals(artifact.registry())) {
             throw new ArtifactVerificationException("Artifact registry does not match the configured allowlist");
         }
@@ -59,6 +59,7 @@ public class RegistryArtifactVerifier implements ArtifactVerifier {
             if (!artifact.digest().equals(resolvedDigest)) {
                 throw new ArtifactVerificationException("OCI registry did not resolve the requested immutable digest");
             }
+            return new VerificationEvidence("REGISTRY_DIGEST", artifact.value(), artifact.digest());
         } catch (IOException exception) {
             throw new ArtifactVerificationException("OCI manifest lookup failed");
         } catch (InterruptedException exception) {
