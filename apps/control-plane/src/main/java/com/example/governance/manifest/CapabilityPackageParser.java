@@ -1,6 +1,8 @@
 package com.example.governance.manifest;
 
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -49,6 +51,10 @@ public final class CapabilityPackageParser {
             "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(n|u|m)?");
     private static final Pattern MEMORY_QUANTITY = Pattern.compile(
             "((?:0|[1-9]\\d*)(?:\\.\\d+)?)(Ki|Mi|Gi|Ti|k|M|G|T)?");
+    private static final Pattern IMMUTABLE_IMAGE_REFERENCE = Pattern.compile(
+            "[^\\s@]+@sha256:[a-f0-9]{64}");
+    private static final Pattern MEDIA_TYPE = Pattern.compile(
+            "[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+");
     private static final Pattern INLINE_CREDENTIAL_VALUE = Pattern.compile(
             "(?i)^(?:bearer\\s+\\S+|sk[-_][A-Za-z0-9_-]+|gh[opsu]_[A-Za-z0-9]+|xox[baprs]-[A-Za-z0-9-]+)$");
     private static final Pattern AWS_ACCESS_KEY = Pattern.compile("^(?:AKIA|ASIA)[A-Z0-9]{16}$");
@@ -71,6 +77,9 @@ public final class CapabilityPackageParser {
     private static final Set<String> CAPABILITY_FIELDS = Set.of(
             "id", "type", "entrypoint", "dependencies", "permissions", "network", "secrets",
             "resources", "health", "runtimeProfile");
+    private static final Set<String> AGENT_ENTRYPOINT_FIELDS = Set.of("artifactPath", "command", "args");
+    private static final Set<String> MCP_ENTRYPOINT_FIELDS = Set.of("image", "transport");
+    private static final Set<String> MCP_TRANSPORT_FIELDS = Set.of("type", "port", "path");
     private static final Set<String> DEPENDENCY_GROUP_FIELDS = Set.of("capabilities", "skills");
     private static final Set<String> CAPABILITY_DEPENDENCY_FIELDS = Set.of(
             "id", "type", "version", "digest", "required");
@@ -93,6 +102,11 @@ public final class CapabilityPackageParser {
     private static final Set<String> HEALTH_HTTP_GET_FIELDS = Set.of("path", "port");
     private static final List<String> HEALTH_PROBE_OPTIONS = List.of(
             "failureThreshold", "periodSeconds", "timeoutSeconds");
+    private static final Set<String> RUNTIME_PROFILE_FIELDS = Set.of(
+            "class", "isolation", "replicas", "timeoutSeconds", "maxConcurrency",
+            "terminationGracePeriodSeconds");
+    private static final List<String> RUNTIME_PROFILE_INTEGER_FIELDS = List.of(
+            "replicas", "timeoutSeconds", "maxConcurrency", "terminationGracePeriodSeconds");
     private static final LoaderOptions YAML_LOADER_OPTIONS = yamlLoaderOptions();
 
     private final ObjectMapper yamlMapper = new ObjectMapper(yamlFactory());
@@ -159,6 +173,8 @@ public final class CapabilityPackageParser {
         if (!HOSTED_CAPABILITY_TYPES.contains(type)) {
             throw invalid("unsupported capability type");
         }
+        validateEntrypoint(node, type);
+        validateRuntimeProfile(node);
         validatePermissions(node, type);
         ObjectNode dependencyGroups = object(node, "dependencies", "capability.dependencies");
         requireOnlyFields(dependencyGroups, DEPENDENCY_GROUP_FIELDS, "capability.dependencies");
@@ -173,6 +189,65 @@ public final class CapabilityPackageParser {
         validateResources(node);
         validateHealth(node);
         return new CapabilityDefinition(id, type, dependencies, network, secrets);
+    }
+
+    private void validateEntrypoint(ObjectNode capability, String type) {
+        ObjectNode entrypoint = object(capability, "entrypoint", "capability.entrypoint");
+        if (type.equals("Agent")) {
+            requireOnlyFields(entrypoint, AGENT_ENTRYPOINT_FIELDS, "capability.entrypoint");
+            requireNonBlankText(entrypoint, "artifactPath", "capability.entrypoint.artifactPath");
+            validateTextArray(entrypoint, "command", false);
+            validateTextArray(entrypoint, "args", true);
+            return;
+        }
+
+        requireOnlyFields(entrypoint, MCP_ENTRYPOINT_FIELDS, "capability.entrypoint");
+        String image = requireNonBlankText(entrypoint, "image", "capability.entrypoint.image");
+        if (!IMMUTABLE_IMAGE_REFERENCE.matcher(image).matches()) {
+            throw invalid("invalid capability.entrypoint.image");
+        }
+        ObjectNode transport = object(entrypoint, "transport", "capability.entrypoint.transport");
+        requireOnlyFields(transport, MCP_TRANSPORT_FIELDS, "capability.entrypoint.transport");
+        if (!"streamable-http".equals(requireNonBlankText(
+                transport, "type", "capability.entrypoint.transport.type"))) {
+            throw invalid("capability.entrypoint.transport.type must be streamable-http");
+        }
+        validatePort(transport, "port", "capability.entrypoint.transport.port");
+        String path = requireNonBlankText(transport, "path", "capability.entrypoint.transport.path");
+        if (!path.startsWith("/")) {
+            throw invalid("invalid capability.entrypoint.transport.path");
+        }
+    }
+
+    private void validateTextArray(ObjectNode parent, String field, boolean emptyAllowed) {
+        JsonNode node = parent.get(field);
+        String path = "capability.entrypoint." + field;
+        if (!(node instanceof ArrayNode values) || (!emptyAllowed && values.isEmpty())) {
+            throw invalid(path + (emptyAllowed
+                    ? " must be an array of non-blank text"
+                    : " must be a non-empty array of non-blank text"));
+        }
+        for (JsonNode value : values) {
+            if (!value.isTextual() || value.textValue().isBlank()) {
+                throw invalid(path + (emptyAllowed
+                        ? " must be an array of non-blank text"
+                        : " must be a non-empty array of non-blank text"));
+            }
+        }
+    }
+
+    private void validateRuntimeProfile(ObjectNode capability) {
+        ObjectNode runtimeProfile = object(capability, "runtimeProfile", "capability.runtimeProfile");
+        requireOnlyFields(runtimeProfile, RUNTIME_PROFILE_FIELDS, "capability.runtimeProfile");
+        requireNonBlankText(runtimeProfile, "class", "capability.runtimeProfile.class");
+        requireNonBlankText(runtimeProfile, "isolation", "capability.runtimeProfile.isolation");
+        for (String field : RUNTIME_PROFILE_INTEGER_FIELDS) {
+            JsonNode value = runtimeProfile.get(field);
+            if (value == null || !value.isIntegralNumber() || !value.canConvertToInt()
+                    || value.intValue() <= 0) {
+                throw invalid("capability.runtimeProfile." + field + " must be a positive integer");
+            }
+        }
     }
 
     private void addDependencies(
@@ -427,6 +502,20 @@ public final class CapabilityPackageParser {
                 && port.intValue() >= 1 && port.intValue() <= 65535;
     }
 
+    private void validatePort(ObjectNode parent, String field, String path) {
+        if (!isValidPort(parent.get(field))) {
+            throw invalid(path + " must be an integer between 1 and 65535");
+        }
+    }
+
+    private String requireNonBlankText(ObjectNode parent, String field, String path) {
+        JsonNode value = parent.get(field);
+        if (value == null || !value.isTextual() || value.textValue().isBlank()) {
+            throw invalid("invalid " + path);
+        }
+        return value.textValue();
+    }
+
     private List<SecretDefinition> parseSecrets(ObjectNode capability) {
         ArrayNode secretNodes = array(capability, "secrets", "capability.secrets");
         List<SecretDefinition> secrets = new ArrayList<>();
@@ -486,12 +575,15 @@ public final class CapabilityPackageParser {
         if (digest != null && !SHA256.matcher(digest).matches()) {
             throw invalid("invalid release.digest");
         }
-        JsonNode artifactNode = release.get("artifact");
-        if (artifactNode != null) {
-            ObjectNode artifact = requireObject(artifactNode, "release.artifact");
-            requireOnlyFields(artifact, ARTIFACT_FIELDS, "release.artifact");
-            text(artifact, "uri", "release.artifact.uri");
-            text(artifact, "mediaType", "release.artifact.mediaType");
+        ObjectNode artifact = object(release, "artifact", "release.artifact");
+        requireOnlyFields(artifact, ARTIFACT_FIELDS, "release.artifact");
+        String artifactUri = requireNonBlankText(artifact, "uri", "release.artifact.uri");
+        if (!isValidArtifactUri(artifactUri)) {
+            throw invalid("invalid release.artifact.uri");
+        }
+        String mediaType = requireNonBlankText(artifact, "mediaType", "release.artifact.mediaType");
+        if (!MEDIA_TYPE.matcher(mediaType).matches()) {
+            throw invalid("invalid release.artifact.mediaType");
         }
         JsonNode sourceNode = release.get("source");
         if (sourceNode != null) {
@@ -499,6 +591,39 @@ public final class CapabilityPackageParser {
             requireOnlyFields(source, SOURCE_FIELDS, "release.source");
             text(source, "repository", "release.source.repository");
             text(source, "revision", "release.source.revision");
+        }
+    }
+
+    private boolean isValidArtifactUri(String value) {
+        if (value.chars().anyMatch(Character::isWhitespace)) {
+            return false;
+        }
+        try {
+            URI uri = new URI(value);
+            if (!"oci".equals(uri.getScheme()) || uri.getRawAuthority() == null
+                    || uri.getRawAuthority().isBlank() || uri.getRawUserInfo() != null
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+                return false;
+            }
+            String path = uri.getRawPath();
+            if (path == null || path.isBlank() || path.equals("/")) {
+                return false;
+            }
+            if (path.indexOf('@') >= 0 && path.indexOf('@') < path.lastIndexOf('/')) {
+                return false;
+            }
+            String finalSegment = path.substring(path.lastIndexOf('/') + 1);
+            int digestSeparator = finalSegment.indexOf('@');
+            if (digestSeparator >= 0) {
+                String digest = finalSegment.substring(digestSeparator + 1);
+                if (!SHA256.matcher(digest).matches() || digestSeparator != finalSegment.lastIndexOf('@')) {
+                    return false;
+                }
+                finalSegment = finalSegment.substring(0, digestSeparator);
+            }
+            return !finalSegment.isBlank() && !finalSegment.contains(":");
+        } catch (URISyntaxException ignored) {
+            return false;
         }
     }
 

@@ -9,7 +9,10 @@ import org.junit.jupiter.api.Test;
 class CapabilityPackageParserTest {
     private static final String RELEASE_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
     private static final String MCP_DIGEST = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    private static final String NORMATIVE_MCP_DIGEST =
+            "sha256:0561ec4dfdf541a3f669c25e92113ef319cfb3f39b196839f198328c30e87c4e";
     private static final String SKILL_DIGEST = "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    private static final String ARTIFACT_URI = "oci://registry.example.internal/capabilities/support-assistant";
 
     private final CapabilityPackageParser parser = new CapabilityPackageParser();
 
@@ -140,9 +143,157 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void requires_a_release_artifact() {
+        assertInvalid(validManifest().replace("  artifact:\n    uri: " + ARTIFACT_URI
+                        + "\n    mediaType: application/vnd.example.capability.bundle.v1+tar\n", ""),
+                "missing required release.artifact");
+    }
+
+    @Test
+    void accepts_an_immutable_digest_addressed_release_artifact() {
+        assertThatCode(() -> parser.parse(validManifest().replace(ARTIFACT_URI,
+                ARTIFACT_URI + "@" + MCP_DIGEST))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejects_malformed_or_mutable_release_artifact_uris() {
+        for (String uri : new String[] {
+                "https://registry.example.internal/capabilities/support-assistant",
+                "OCI://registry.example.internal/capabilities/support-assistant",
+                "oci:///capabilities/support-assistant",
+                "oci://registry.example.internal",
+                "oci://registry.example.internal/capabilities/support-assistant:latest",
+                "oci://registry.example.internal/capabilities/support-assistant?tag=latest",
+                "oci://registry.example.internal/capabilities/support-assistant#latest",
+                "oci://registry.example.internal/capabilities/support assistant",
+                ARTIFACT_URI + "@" + MCP_DIGEST + "/child",
+                ARTIFACT_URI + "@sha256:ABCDEF"
+        }) {
+            assertInvalid(validManifest().replace(ARTIFACT_URI, uri),
+                    "invalid release.artifact.uri");
+        }
+    }
+
+    @Test
+    void rejects_release_artifact_userinfo_without_disclosing_it() {
+        String secret = "super-secret";
+        String manifest = validManifest().replace(ARTIFACT_URI,
+                "oci://user:" + secret + "@registry.example.internal/capabilities/support-assistant");
+
+        assertCredentialRejected(manifest, secret);
+    }
+
+    @Test
+    void requires_a_simple_release_artifact_media_type() {
+        for (String mediaType : new String[] {"", "application", "application/json; charset=utf-8", "text /plain"}) {
+            String rendered = mediaType.isEmpty() ? "\"\"" : "\"" + mediaType + "\"";
+            assertInvalid(validManifest().replace(
+                            "application/vnd.example.capability.bundle.v1+tar", rendered),
+                    "invalid release.artifact.mediaType");
+        }
+    }
+
+    @Test
     void rejects_an_unsupported_hosted_capability_type() {
         assertInvalid(validManifest().replace("type: Agent", "type: Plugin"),
                 "unsupported capability type");
+    }
+
+    @Test
+    void requires_an_agent_entrypoint_with_the_exact_schema() {
+        assertInvalid(validManifest().replace(
+                        "      entrypoint:\n        artifactPath: agents/support-agent\n"
+                                + "        command: [\"/opt/platform/bin/agent-runner\"]\n"
+                                + "        args: [\"--manifest\", \"/workspace/agent.json\"]\n", ""),
+                "missing required capability.entrypoint");
+        assertInvalid(validManifest().replace("        artifactPath: agents/support-agent\n", ""),
+                "invalid capability.entrypoint.artifactPath");
+        assertInvalid(validManifest().replace("artifactPath: agents/support-agent", "artifactPath: \"   \""),
+                "invalid capability.entrypoint.artifactPath");
+        assertInvalid(validManifest().replace("artifactPath: agents/support-agent", "artifactPath: 42"),
+                "invalid capability.entrypoint.artifactPath");
+        assertInvalid(validManifest().replace("        command: [\"/opt/platform/bin/agent-runner\"]\n", ""),
+                "capability.entrypoint.command must be a non-empty array of non-blank text");
+        assertInvalid(validManifest().replace("        command: [\"/opt/platform/bin/agent-runner\"]",
+                        "        command: []"),
+                "capability.entrypoint.command must be a non-empty array of non-blank text");
+        assertInvalid(validManifest().replace("        command: [\"/opt/platform/bin/agent-runner\"]",
+                        "        command: [42]"),
+                "capability.entrypoint.command must be a non-empty array of non-blank text");
+        assertInvalid(validManifest().replace("        args: [\"--manifest\", \"/workspace/agent.json\"]",
+                        "        args: [\"   \"]"),
+                "capability.entrypoint.args must be an array of non-blank text");
+        assertInvalid(validManifest().replace("        args: [\"--manifest\", \"/workspace/agent.json\"]\n", ""),
+                "capability.entrypoint.args must be an array of non-blank text");
+        assertInvalid(validManifest().replace("        args: [\"--manifest\", \"/workspace/agent.json\"]",
+                        "        args: []\n        grantAdmin: true"),
+                "unexpected field in capability.entrypoint");
+    }
+
+    @Test
+    void allows_an_agent_entrypoint_with_empty_args() {
+        assertThatCode(() -> parser.parse(validManifest().replace(
+                "args: [\"--manifest\", \"/workspace/agent.json\"]", "args: []")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validates_the_mcp_entrypoint_contract() {
+        assertInvalid(normativeManifest().replace(
+                        "registry.example.internal/mcp/customer-records@" + NORMATIVE_MCP_DIGEST,
+                        "registry.example.internal/mcp/customer-records:latest"),
+                "invalid capability.entrypoint.image");
+        assertInvalid(normativeManifest().replace(
+                        "        image: registry.example.internal/mcp/customer-records@" + NORMATIVE_MCP_DIGEST + "\n", ""),
+                "invalid capability.entrypoint.image");
+        assertInvalid(normativeManifest().replace("type: streamable-http", "type: websocket"),
+                "capability.entrypoint.transport.type must be streamable-http");
+        assertInvalid(normativeManifest().replace("          port: 8080\n          path: /mcp",
+                        "          port: 0\n          path: /mcp"),
+                "capability.entrypoint.transport.port must be an integer between 1 and 65535");
+        assertInvalid(normativeManifest().replace("          port: 8080\n          path: /mcp",
+                        "          port: 1.5\n          path: /mcp"),
+                "capability.entrypoint.transport.port must be an integer between 1 and 65535");
+        assertInvalid(normativeManifest().replace("          path: /mcp", "          path: mcp"),
+                "invalid capability.entrypoint.transport.path");
+        assertInvalid(normativeManifest().replace("          path: /mcp", "          path: /mcp\n          grantAdmin: true"),
+                "unexpected field in capability.entrypoint.transport");
+    }
+
+    @Test
+    void requires_the_exact_runtime_profile_schema() {
+        String runtimeProfile = "      runtimeProfile:\n"
+                + "        class: hosted-standard\n"
+                + "        isolation: namespace\n"
+                + "        replicas: 1\n"
+                + "        timeoutSeconds: 90\n"
+                + "        maxConcurrency: 8\n"
+                + "        terminationGracePeriodSeconds: 30\n";
+        assertInvalid(validManifest().replace(runtimeProfile, ""),
+                "missing required capability.runtimeProfile");
+        assertInvalid(validManifest().replace(runtimeProfile, "      runtimeProfile: [grant-admin]\n"),
+                "missing required capability.runtimeProfile");
+        assertInvalid(validManifest().replace("      runtimeProfile:\n", "      runtimeProfile:\n        grantAdmin: true\n"),
+                "unexpected field in capability.runtimeProfile");
+        assertInvalid(validManifest().replace("        class: hosted-standard\n", ""),
+                "invalid capability.runtimeProfile.class");
+        assertInvalid(validManifest().replace("        isolation: namespace", "        isolation: [grant-admin]"),
+                "invalid capability.runtimeProfile.isolation");
+        assertInvalid(validManifest().replace("        replicas: 1\n", ""),
+                "capability.runtimeProfile.replicas must be a positive integer");
+        for (String field : new String[] {
+                "replicas", "timeoutSeconds", "maxConcurrency", "terminationGracePeriodSeconds"
+        }) {
+            assertInvalid(validManifest().replace("        " + field + ": " + runtimeValue(field),
+                            "        " + field + ": 0"),
+                    "capability.runtimeProfile." + field + " must be a positive integer");
+            assertInvalid(validManifest().replace("        " + field + ": " + runtimeValue(field),
+                            "        " + field + ": 1.5"),
+                    "capability.runtimeProfile." + field + " must be a positive integer");
+            assertInvalid(validManifest().replace("        " + field + ": " + runtimeValue(field),
+                            "        " + field + ": 2147483648"),
+                    "capability.runtimeProfile." + field + " must be a positive integer");
+        }
     }
 
     @Test
@@ -629,6 +780,16 @@ class CapabilityPackageParserTest {
                         + "          " + option + ": " + value);
     }
 
+    private String runtimeValue(String field) {
+        return switch (field) {
+            case "replicas" -> "1";
+            case "timeoutSeconds" -> "90";
+            case "maxConcurrency" -> "8";
+            case "terminationGracePeriodSeconds" -> "30";
+            default -> throw new IllegalArgumentException("unknown runtime field");
+        };
+    }
+
     private String normativeManifest() {
         return """
                 apiVersion: governance.platform.example/v1alpha1
@@ -791,10 +952,17 @@ class CapabilityPackageParserTest {
                   version: 1.4.0
                 release:
                   digest: %s
+                  artifact:
+                    uri: %s
+                    mediaType: application/vnd.example.capability.bundle.v1+tar
                 spec:
                   capabilities:
                     - id: support-agent
                       type: Agent
+                      entrypoint:
+                        artifactPath: agents/support-agent
+                        command: ["/opt/platform/bin/agent-runner"]
+                        args: ["--manifest", "/workspace/agent.json"]
                       permissions:
                         modelPolicies:
                           - general-chat
@@ -836,7 +1004,14 @@ class CapabilityPackageParserTest {
                           httpGet: { path: /health/ready, port: 8080 }
                         liveness:
                           httpGet: { path: /health/live, port: 8080 }
-                """.formatted(RELEASE_DIGEST, MCP_DIGEST, SKILL_DIGEST);
+                      runtimeProfile:
+                        class: hosted-standard
+                        isolation: namespace
+                        replicas: 1
+                        timeoutSeconds: 90
+                        maxConcurrency: 8
+                        terminationGracePeriodSeconds: 30
+                """.formatted(RELEASE_DIGEST, ARTIFACT_URI, MCP_DIGEST, SKILL_DIGEST);
     }
 
     private String reorderedValidManifest() {
@@ -851,6 +1026,13 @@ class CapabilityPackageParserTest {
                           httpGet: { port: 8080, path: /health/startup }
                         readiness:
                           httpGet: { port: 8080, path: /health/ready }
+                      runtimeProfile:
+                        terminationGracePeriodSeconds: 30
+                        maxConcurrency: 8
+                        timeoutSeconds: 90
+                        replicas: 1
+                        isolation: namespace
+                        class: hosted-standard
                       resources:
                         limits:
                           memory: 1Gi
@@ -885,15 +1067,22 @@ class CapabilityPackageParserTest {
                       permissions:
                         modelPolicies:
                           - general-chat
+                      entrypoint:
+                        args: ["--manifest", "/workspace/agent.json"]
+                        command: ["/opt/platform/bin/agent-runner"]
+                        artifactPath: agents/support-agent
                       type: Agent
                       id: support-agent
                 release:
+                  artifact:
+                    mediaType: application/vnd.example.capability.bundle.v1+tar
+                    uri: %s
                   digest: %s
                 metadata:
                   version: 1.4.0
                   namespace: customer-operations
                   name: support-assistant
                 apiVersion: governance.platform.example/v1alpha1
-                """.formatted(SKILL_DIGEST, MCP_DIGEST, RELEASE_DIGEST);
+                """.formatted(SKILL_DIGEST, MCP_DIGEST, ARTIFACT_URI, RELEASE_DIGEST);
     }
 }
