@@ -48,7 +48,16 @@ class CapabilityPackageParserTest {
         assertThat(capabilityPackage.canonicalDocument())
                 .contains("\"entrypoint\"")
                 .contains("\"runtimeProfile\"")
-                .contains("\"tools\"");
+                .contains("\"tools\"")
+                .contains("\"path\":\"/var/run/secrets/platform/crm-client\"")
+                .contains("\"variable\":\"CRM_CREDENTIAL_FILE\"");
+        assertThat(capabilityPackage.capability("support-agent").secrets()).containsExactly(
+                new CapabilityPackage.SecretDefinition(
+                        "crm-client", "platform-secret-store", "customer-operations/crm-client", "12"));
+        assertThat(capabilityPackage.capability("customer-records").secrets()).containsExactly(
+                new CapabilityPackage.SecretDefinition(
+                        "crm-service-account", "platform-secret-store",
+                        "customer-operations/crm-service-account", "7"));
     }
 
     @Test
@@ -218,6 +227,15 @@ class CapabilityPackageParserTest {
         assertCredentialRejected(normativeManifest().replace(
                 "key: customer-operations/crm-client",
                 "key: https://user:hunter2@secrets.example.internal/key"), "hunter2");
+    }
+
+    @Test
+    void rejects_inline_credential_values_inside_secret_mount_variables_without_disclosing_them() {
+        String secret = "Bearer super-secret";
+        String manifest = normativeManifest().replace(
+                "variable: CRM_CREDENTIAL_FILE", "variable: \"" + secret + "\"");
+
+        assertCredentialRejected(manifest, secret);
     }
 
     @Test
@@ -458,9 +476,11 @@ class CapabilityPackageParserTest {
 
     @Test
     void rejects_arbitrary_inline_secret_fields_without_disclosing_values() {
-        assertInvalid(validManifest().replace("name: crm-client\n          ref:",
-                "name: crm-client\n          token: super-secret\n          ref:"),
-                "unexpected field in secret");
+        String secret = "super-secret";
+        String manifest = validManifest().replace("name: crm-client\n          ref:",
+                "name: crm-client\n          token: " + secret + "\n          ref:");
+
+        assertCredentialRejected(manifest, secret);
     }
 
     @Test

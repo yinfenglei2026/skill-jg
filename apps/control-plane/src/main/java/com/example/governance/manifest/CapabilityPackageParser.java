@@ -83,6 +83,8 @@ public final class CapabilityPackageParser {
     private static final Set<String> SECRET_FIELDS = Set.of("name", "ref", "mount");
     private static final Set<String> SECRET_REF_FIELDS = Set.of("provider", "key", "version");
     private static final Set<String> SECRET_MOUNT_FIELDS = Set.of("type", "path", "variable");
+    private static final String SECRET_REFERENCE_METADATA_PATH_PREFIX =
+            "spec.capabilities[].secrets[].ref.";
     private static final Set<String> RESOURCE_FIELDS = Set.of("requests", "limits");
     private static final Set<String> RESOURCE_QUANTITY_FIELDS = Set.of("cpu", "memory");
     private static final Set<String> HEALTH_FIELDS = Set.of("startup", "readiness", "liveness");
@@ -509,6 +511,10 @@ public final class CapabilityPackageParser {
                 String childPath = path.isEmpty() ? field : path + "." + field;
                 if (childPath.equals("spec.capabilities[].secrets")) {
                     rejectUriUserinfo(child);
+                    rejectInlineCredentialMaterial(child, childPath);
+                    continue;
+                }
+                if (isApprovedSecretReferenceMetadata(childPath)) {
                     continue;
                 }
                 if (isCredentialField(field)
@@ -528,6 +534,14 @@ public final class CapabilityPackageParser {
         if (node.isTextual() && isInlineCredentialValue(node.textValue())) {
             throw invalid("inline credential material is forbidden");
         }
+    }
+
+    private boolean isApprovedSecretReferenceMetadata(String path) {
+        if (!path.startsWith(SECRET_REFERENCE_METADATA_PATH_PREFIX)) {
+            return false;
+        }
+        String field = path.substring(SECRET_REFERENCE_METADATA_PATH_PREFIX.length());
+        return SECRET_REF_FIELDS.contains(field);
     }
 
     private void rejectUriUserinfo(JsonNode node) {
