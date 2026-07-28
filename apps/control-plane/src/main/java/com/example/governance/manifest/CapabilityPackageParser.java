@@ -599,14 +599,14 @@ public final class CapabilityPackageParser {
             return false;
         }
         try {
-            URI uri = new URI(value);
-            if (!"oci".equals(uri.getScheme()) || uri.getRawAuthority() == null
-                    || uri.getRawAuthority().isBlank() || uri.getRawUserInfo() != null
+            URI uri = new URI(value).parseServerAuthority();
+            if (!"oci".equals(uri.getScheme()) || uri.getHost() == null || uri.getHost().isBlank()
+                    || uri.getRawUserInfo() != null || uri.getPort() == 0 || uri.getPort() > 65535
                     || uri.getRawQuery() != null || uri.getRawFragment() != null) {
                 return false;
             }
-            String path = uri.getRawPath();
-            if (path == null || path.isBlank() || path.equals("/")) {
+            String path = uri.getPath();
+            if (path == null || !path.equals(uri.getRawPath()) || path.isBlank() || path.equals("/")) {
                 return false;
             }
             if (path.indexOf('@') >= 0 && path.indexOf('@') < path.lastIndexOf('/')) {

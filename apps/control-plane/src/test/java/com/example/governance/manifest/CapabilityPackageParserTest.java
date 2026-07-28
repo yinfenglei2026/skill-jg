@@ -156,6 +156,13 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void accepts_a_release_artifact_registry_with_an_explicit_port() {
+        assertThatCode(() -> parser.parse(validManifest().replace(
+                ARTIFACT_URI, "oci://registry.example.internal:5000/capabilities/support-assistant")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void rejects_malformed_or_mutable_release_artifact_uris() {
         for (String uri : new String[] {
                 "https://registry.example.internal/capabilities/support-assistant",
@@ -172,6 +179,27 @@ class CapabilityPackageParserTest {
             assertInvalid(validManifest().replace(ARTIFACT_URI, uri),
                     "invalid release.artifact.uri");
         }
+    }
+
+    @Test
+    void rejects_a_percent_encoded_mutable_release_artifact_tag() {
+        assertInvalid(validManifest().replace(ARTIFACT_URI,
+                        "oci://registry.example.internal/capabilities/support-assistant%3Alatest"),
+                "invalid release.artifact.uri");
+    }
+
+    @Test
+    void rejects_a_release_artifact_authority_without_a_host() {
+        assertInvalid(validManifest().replace(ARTIFACT_URI,
+                        "oci://:5000/capabilities/support-assistant"),
+                "invalid release.artifact.uri");
+    }
+
+    @Test
+    void rejects_a_release_artifact_authority_with_a_non_numeric_port() {
+        assertInvalid(validManifest().replace(ARTIFACT_URI,
+                        "oci://registry.example.internal:abc/capabilities/support-assistant"),
+                "invalid release.artifact.uri");
     }
 
     @Test
