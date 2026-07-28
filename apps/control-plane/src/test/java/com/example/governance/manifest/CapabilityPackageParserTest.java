@@ -253,6 +253,22 @@ class CapabilityPackageParserTest {
     }
 
     @Test
+    void rejects_uppercase_internal_network_hosts() {
+        assertInvalid(validManifest().replace(
+                        "model-gateway.platform.svc.cluster.local",
+                        "MODEL-GATEWAY.PLATFORM.SVC.CLUSTER.LOCAL"),
+                "network.allow.host must be an internal DNS name");
+    }
+
+    @Test
+    void rejects_trailing_dot_internal_network_hosts() {
+        assertInvalid(validManifest().replace(
+                        "model-gateway.platform.svc.cluster.local",
+                        "model-gateway.platform.svc.cluster.local."),
+                "network.allow.host must be an internal DNS name");
+    }
+
+    @Test
     void rejects_all_non_internal_network_hosts() {
         for (String host : new String[] {
                 "updates.example.com", "api.mistral.ai", "10.0.0.1", "127.0.0.1", "API.MISTRAL.AI."}) {

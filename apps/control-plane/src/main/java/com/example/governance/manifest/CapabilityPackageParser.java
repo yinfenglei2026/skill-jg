@@ -382,16 +382,11 @@ public final class CapabilityPackageParser {
     }
 
     private boolean isInternalDnsHost(String host) {
-        String normalized = host.toLowerCase(Locale.ROOT);
-        if (normalized.endsWith(".")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        if (normalized.length() > 253 || !hasValidDnsLabels(normalized)) {
+        if (host.length() > 253 || !hasValidDnsLabels(host)) {
             return false;
         }
-        String candidate = normalized;
         return INTERNAL_DNS_SUFFIXES.stream()
-                .anyMatch(suffix -> candidate.length() > suffix.length() && candidate.endsWith(suffix));
+                .anyMatch(suffix -> host.length() > suffix.length() && host.endsWith(suffix));
     }
 
     private boolean hasValidDnsLabels(String host) {
