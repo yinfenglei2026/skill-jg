@@ -17,14 +17,18 @@ public class ReleaseDependency {
     @Column(name = "dependency_digest", nullable = false)
     private String digest;
 
+    @Column(name = "dependency_import_path", length = 512)
+    private String importPath;
+
     protected ReleaseDependency() {
     }
 
-    public ReleaseDependency(String capabilityId, String type, String version, String digest) {
+    public ReleaseDependency(String capabilityId, String type, String version, String digest, String importPath) {
         this.capabilityId = capabilityId;
         this.type = type;
         this.version = version;
         this.digest = digest;
+        this.importPath = importPath;
     }
 
     public String capabilityId() {
@@ -41,5 +45,9 @@ public class ReleaseDependency {
 
     public String digest() {
         return digest;
+    }
+
+    public String importPath() {
+        return importPath;
     }
 }

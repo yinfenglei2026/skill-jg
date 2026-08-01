@@ -10,6 +10,7 @@ import com.example.governance.release.Release;
 import com.example.governance.release.ReleaseDependency;
 import com.example.governance.release.ReleaseState;
 import com.example.governance.release.VerificationEvidence;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
@@ -152,10 +153,11 @@ public class GovernanceController {
         }
     }
 
-    record DependencyResponse(String capabilityId, String type, String version, String digest) {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record DependencyResponse(String capabilityId, String type, String version, String digest, String importPath) {
         static DependencyResponse from(ReleaseDependency dependency) {
             return new DependencyResponse(dependency.capabilityId(), dependency.type(), dependency.version(),
-                    dependency.digest());
+                    dependency.digest(), dependency.importPath());
         }
     }
 

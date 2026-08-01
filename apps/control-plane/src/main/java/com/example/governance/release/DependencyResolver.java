@@ -26,7 +26,7 @@ public class DependencyResolver {
 
     private ReleaseDependency lock(DependencyDefinition dependency) {
         ReleaseDependency lock = new ReleaseDependency(
-                dependency.id(), dependency.type(), dependency.version(), dependency.digest());
+                dependency.id(), dependency.type(), dependency.version(), dependency.digest(), dependency.importPath());
         if (!"SKILL".equals(dependency.type())) {
             requireMatchingRelease(lock);
         }

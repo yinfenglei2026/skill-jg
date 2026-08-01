@@ -113,11 +113,19 @@ class GovernanceApiTest {
                 .andExpect(jsonPath("$.dependencies[1].type").value("SKILL"))
                 .andExpect(jsonPath("$.dependencies[1].version").value("3.2.0"))
                 .andExpect(jsonPath("$.dependencies[1].digest").value(SKILL_DIGEST))
-                .andExpect(jsonPath("$.dependencies[1].importPath").doesNotExist())
+                .andExpect(jsonPath("$.dependencies[1].importPath")
+                        .value("skills/ticket-triage/SKILL.md"))
                 .andExpect(jsonPath("$.evidence", hasSize(1)))
                 .andExpect(jsonPath("$.evidence[0].type").value("TEST_ATTESTATION"))
                 .andExpect(jsonPath("$.evidence[0].subject").value(agent.artifactReference()))
                 .andExpect(jsonPath("$.evidence[0].digest").value(agent.digest()));
+
+        mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dependencies[0].importPath").doesNotExist())
+                .andExpect(jsonPath("$.dependencies[1].importPath")
+                        .value("skills/ticket-triage/SKILL.md"));
     }
 
     @Test
