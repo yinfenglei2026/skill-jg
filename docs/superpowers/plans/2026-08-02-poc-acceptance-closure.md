@@ -58,7 +58,7 @@ Commit as `test: verify live postgres upgrades`.
 - Modify: `apps/portal/src/governance-api.ts`
 - Modify: `apps/portal/test/governance-api.vitest.ts`
 
-- [ ] **Step 1: Write failing authenticated POST tests**
+- [x] **Step 1: Write failing authenticated POST tests**
 
 Prove `transitionRelease` sends an authenticated POST, `deployRelease` posts to `/deployments`, and non-2xx responses retain their HTTP status.
 
@@ -70,16 +70,16 @@ expect(fetchImpl).toHaveBeenCalledWith(
 );
 ```
 
-- [ ] **Step 2: Verify the focused test fails**
+- [x] **Step 2: Verify the focused test fails**
 
 Run `node apps/portal/node_modules/vitest/vitest.mjs run apps/portal/test/governance-api.vitest.ts`.
 Expected: missing mutation methods.
 
-- [ ] **Step 3: Implement mutation-capable request plumbing**
+- [x] **Step 3: Implement mutation-capable request plumbing**
 
 Allow `request` to merge an optional `RequestInit`. Add `ReleaseTransition`, `Deployment`, `transitionRelease(...)`, and `deployRelease(...)`; both methods use POST and parse JSON.
 
-- [ ] **Step 4: Run the focused tests and commit**
+- [x] **Step 4: Run the focused tests and commit**
 
 Expected: API-client tests pass. Commit as `feat: add portal governance mutations`.
 
