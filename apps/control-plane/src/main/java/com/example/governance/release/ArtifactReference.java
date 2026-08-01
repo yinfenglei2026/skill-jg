@@ -14,4 +14,9 @@ public record ArtifactReference(String value, String registry, String repository
         }
         return new ArtifactReference(value, matcher.group("registry"), matcher.group("repository"), matcher.group("digest"));
     }
+
+    public boolean matchesManifestUri(String manifestUri) {
+        String repositoryUri = "oci://" + registry + "/" + repository;
+        return repositoryUri.equals(manifestUri) || value.equals(manifestUri);
+    }
 }

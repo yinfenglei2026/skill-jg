@@ -185,6 +185,17 @@ class GovernanceApiTest {
     }
 
     @Test
+    void rejects_an_artifact_reference_for_a_different_manifest_repository() throws Exception {
+        createCapability("support-agent", "AGENT");
+        ManifestFixture manifest = manifest("support-agent", "Agent", "1.0.0", List.of());
+        String mismatchedArtifact = "oci://registry.example.internal/other/support-agent@" + manifest.digest();
+
+        registerRelease("support-agent", "1.0.0", manifest, mismatchedArtifact)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_CAPABILITY_MANIFEST"));
+    }
+
+    @Test
     void rejects_a_role_holder_from_a_different_department() throws Exception {
         createCapability("cross-department-agent", "AGENT");
         ManifestFixture manifest = manifest("cross-department-agent", "Agent", "1.0.0", List.of());

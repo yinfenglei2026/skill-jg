@@ -142,8 +142,7 @@ public final class CapabilityPackageParser {
 
         ObjectNode releaseNode = object(root, "release", "release");
         requireOnlyFields(releaseNode, RELEASE_FIELDS, "release");
-        validateRelease(releaseNode);
-        ReleaseDescriptor release = new ReleaseDescriptor(optionalText(releaseNode, "digest", "release.digest"));
+        ReleaseDescriptor release = validateRelease(releaseNode);
 
         ObjectNode specNode = object(root, "spec", "spec");
         requireOnlyFields(specNode, SPEC_FIELDS, "spec");
@@ -572,7 +571,7 @@ public final class CapabilityPackageParser {
         }
     }
 
-    private void validateRelease(ObjectNode release) {
+    private ReleaseDescriptor validateRelease(ObjectNode release) {
         String digest = optionalText(release, "digest", "release.digest");
         if (digest != null && !SHA256.matcher(digest).matches()) {
             throw invalid("invalid release.digest");
@@ -594,6 +593,7 @@ public final class CapabilityPackageParser {
             text(source, "repository", "release.source.repository");
             text(source, "revision", "release.source.revision");
         }
+        return new ReleaseDescriptor(digest, artifactUri);
     }
 
     private boolean isValidArtifactUri(String value) {

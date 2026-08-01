@@ -82,6 +82,10 @@ public class GovernanceService {
         CapabilityPackage manifest = manifestParser.parse(manifestDocument);
         validateManifest(capability, capabilityId, version, manifest);
         ArtifactReference artifact = ArtifactReference.parse(artifactReference);
+        if (!artifact.matchesManifestUri(manifest.release().artifactUri())) {
+            throw new InvalidCapabilityManifestException(
+                    "release artifact reference does not match manifest artifact URI");
+        }
         if (!artifact.digest().equals(manifest.canonicalDigest())) {
             throw new InvalidCapabilityManifestException("artifact digest does not match canonical manifest digest");
         }
