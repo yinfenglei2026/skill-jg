@@ -9,23 +9,13 @@ if (-not (Test-Path -LiteralPath $mavenWrapperJar)) {
 }
 
 $docker = (Get-Command docker -ErrorAction Stop).Source
-$compose = $docker
-$composePrefix = @('compose')
-$originalErrorActionPreference = $ErrorActionPreference
-try {
-    $ErrorActionPreference = 'Continue'
-    & $docker compose version *> $null
-    $standardComposeAvailable = $LASTEXITCODE -eq 0
-} finally {
-    $ErrorActionPreference = $originalErrorActionPreference
-}
-if (-not $standardComposeAvailable) {
-    $dockerDesktopCompose = Join-Path (Split-Path (Split-Path $docker -Parent) -Parent) 'cli-plugins\docker-compose.exe'
-    if (-not (Test-Path -LiteralPath $dockerDesktopCompose)) {
-        throw 'Docker Compose was not found as a CLI plugin or Docker Desktop executable.'
-    }
+$dockerDesktopCompose = Join-Path (Split-Path (Split-Path $docker -Parent) -Parent) 'cli-plugins\docker-compose.exe'
+if (Test-Path -LiteralPath $dockerDesktopCompose) {
     $compose = $dockerDesktopCompose
     $composePrefix = @()
+} else {
+    $compose = $docker
+    $composePrefix = @('compose')
 }
 
 & java "-Dmaven.multiModuleProjectDirectory=$repositoryRoot" -classpath $mavenWrapperJar `

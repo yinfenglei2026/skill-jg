@@ -178,6 +178,15 @@ public class GovernanceService {
         return release;
     }
 
+    @Transactional
+    public Release lockReleaseForDeployment(String releaseId) {
+        Actor actor = currentActor.require();
+        Release release = releases.findByIdForUpdate(releaseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Release not found: " + releaseId));
+        requireDepartment(actor, requireCapability(release.capabilityId()).department());
+        return release;
+    }
+
     private Release transition(String releaseId, String action, String decision,
                                ReleaseTransitionAction transition) {
         Actor actor = currentActor.require();

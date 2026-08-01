@@ -1,6 +1,8 @@
 package com.example.governance.api;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -15,11 +17,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.governance.manifest.CapabilityPackage;
 import com.example.governance.manifest.CapabilityPackageParser;
 import com.example.governance.deployment.DeploymentIntegrationUnavailableException;
+import com.example.governance.deployment.LocalGitOpsReconciler;
 import com.example.governance.deployment.LocalRuntimeObserver;
+import com.example.governance.release.ReleaseRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -27,11 +39,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -49,6 +64,18 @@ class GovernanceApiTest {
 
     @SpyBean
     private LocalRuntimeObserver runtimeObserver;
+
+    @SpyBean
+    private LocalGitOpsReconciler gitOpsReconciler;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ReleaseRepository releaseRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void publishes_only_after_role_guarded_transitions_and_audits_jwt_actor() throws Exception {
@@ -376,6 +403,66 @@ class GovernanceApiTest {
     }
 
     @Test
+    void retries_a_stale_reconciling_intent_after_process_termination() throws Exception {
+        ManifestFixture published = createPublishedRelease();
+        doThrow(new SimulatedProcessTermination())
+                .doCallRealMethod()
+                .when(gitOpsReconciler).reconcile(any());
+
+        assertThatThrownBy(() -> mockMvc.perform(
+                post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal"))))
+                .hasRootCauseInstanceOf(SimulatedProcessTermination.class);
+
+        String strandedDeployment = mockMvc.perform(
+                        get("/api/v1/releases/support-agent:1.0.0/deployment")
+                                .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RECONCILING"))
+                .andReturn().getResponse().getContentAsString();
+        String deploymentId = JSON.readTree(strandedDeployment).get("id").asText();
+        jdbcTemplate.update("UPDATE deployment_intents SET requested_at = ? WHERE release_id = ?",
+                Timestamp.from(Instant.now().minus(Duration.ofMinutes(6))), "support-agent:1.0.0");
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "recovery-operator@example.internal")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(deploymentId))
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.observedDigest").value(published.digest()));
+    }
+
+    @Test
+    void serializes_concurrent_first_deployment_requests_on_the_release() throws Exception {
+        createPublishedRelease();
+        CountDownLatch releaseLocked = new CountDownLatch(1);
+        CountDownLatch unlockRelease = new CountDownLatch(1);
+        CompletableFuture<Void> lockHolder = CompletableFuture.runAsync(() ->
+                new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                    releaseRepository.findByIdForUpdate("support-agent:1.0.0").orElseThrow();
+                    releaseLocked.countDown();
+                    await(unlockRelease);
+                }));
+        assertThat(releaseLocked.await(10, TimeUnit.SECONDS)).isTrue();
+
+        CompletableFuture<String> first = deployAsync("operator-one@example.internal");
+        CompletableFuture<String> second = deployAsync("operator-two@example.internal");
+        try {
+            assertThatThrownBy(() -> first.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            assertThatThrownBy(() -> second.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+        } finally {
+            unlockRelease.countDown();
+        }
+
+        String firstId = JSON.readTree(first.get(10, TimeUnit.SECONDS)).get("id").asText();
+        String secondId = JSON.readTree(second.get(10, TimeUnit.SECONDS)).get("id").asText();
+        assertThat(firstId).isEqualTo(secondId);
+        lockHolder.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
     void rejects_deployment_of_draft_unapproved_and_revoked_releases() throws Exception {
         createCapability("draft-agent", "AGENT");
         ManifestFixture draft = manifest("draft-agent", "Agent", "1.0.0", List.of());
@@ -457,6 +544,33 @@ class GovernanceApiTest {
                         .with(as("OPERATOR", "release-bot@example.internal")))
                 .andExpect(status().isOk());
         return manifest;
+    }
+
+    private static final class SimulatedProcessTermination extends Error {
+    }
+
+    private CompletableFuture<String> deployAsync(String actor) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                                .with(as("OPERATOR", actor)))
+                        .andExpect(status().isCreated())
+                        .andReturn().getResponse().getContentAsString();
+            } catch (Exception exception) {
+                throw new CompletionException(exception);
+            }
+        });
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for test latch");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while waiting for test latch", exception);
+        }
     }
 
     private void createCapability(String id, String type) throws Exception {

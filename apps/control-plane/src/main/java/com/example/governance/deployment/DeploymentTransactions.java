@@ -9,9 +9,11 @@ import com.example.governance.release.ReleaseState;
 import com.example.governance.security.Actor;
 import com.example.governance.security.CurrentActor;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,36 +27,53 @@ public class DeploymentTransactions {
     private final AuditService auditService;
     private final CurrentActor currentActor;
     private final Clock clock;
+    private final Duration attemptLease;
 
     @Autowired
     public DeploymentTransactions(GovernanceService governanceService, DeploymentIntentRepository deployments,
-                                  AuditService auditService, CurrentActor currentActor) {
-        this(governanceService, deployments, auditService, currentActor, Clock.systemUTC());
+                                  AuditService auditService, CurrentActor currentActor,
+                                  @Value("${governance.deployment.attempt-lease:PT5M}") Duration attemptLease) {
+        this(governanceService, deployments, auditService, currentActor, Clock.systemUTC(), attemptLease);
     }
 
     DeploymentTransactions(GovernanceService governanceService, DeploymentIntentRepository deployments,
                            AuditService auditService, CurrentActor currentActor, Clock clock) {
+        this(governanceService, deployments, auditService, currentActor, clock, Duration.ofMinutes(5));
+    }
+
+    DeploymentTransactions(GovernanceService governanceService, DeploymentIntentRepository deployments,
+                           AuditService auditService, CurrentActor currentActor, Clock clock,
+                           Duration attemptLease) {
         this.governanceService = governanceService;
         this.deployments = deployments;
         this.auditService = auditService;
         this.currentActor = currentActor;
         this.clock = clock;
+        this.attemptLease = attemptLease;
     }
 
     @Transactional
     public DeploymentStart start(String releaseId) {
         Actor actor = currentActor.require();
-        Release release = governanceService.release(releaseId);
+        Release release = governanceService.lockReleaseForDeployment(releaseId);
         DeploymentIntent existing = deployments.findByReleaseId(releaseId).orElse(null);
-        if (isCompleted(release, existing) || isInProgress(release, existing)) {
+        Instant requestedAt = now();
+        if (isCompleted(release, existing)) {
             return new DeploymentStart(existing, false);
+        }
+        if (isInProgress(release, existing)) {
+            if (!isStale(existing, requestedAt)) {
+                return new DeploymentStart(existing, false);
+            }
+            existing.restart(release, actor, requestedAt);
+            auditService.record(actor, "DEPLOYMENT_REQUESTED", release.id(), "ALLOW", release.digest(), requestedAt);
+            return new DeploymentStart(existing, true);
         }
         if (!RETRYABLE_STATES.contains(release.state())) {
             auditService.recordDeniedTransition(actor, releaseId, release.digest(), now());
             throw new InvalidReleaseTransitionException(release.state(), ReleaseState.DEPLOYING);
         }
 
-        Instant requestedAt = now();
         DeploymentIntent intent;
         if (existing == null) {
             intent = deployments.save(DeploymentIntent.pending(release, actor, requestedAt));
@@ -122,6 +141,10 @@ public class DeploymentTransactions {
                 && release.state() == ReleaseState.DEPLOYING
                 && (intent.status() == DeploymentStatus.PENDING
                 || intent.status() == DeploymentStatus.RECONCILING);
+    }
+
+    private boolean isStale(DeploymentIntent intent, Instant currentTime) {
+        return !intent.requestedAt().plus(attemptLease).isAfter(currentTime);
     }
 
     private Instant now() {
