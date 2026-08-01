@@ -75,14 +75,9 @@ try {
     Pop-Location
 }
 
-$rendered = (kubectl kustomize (Join-Path $repositoryRoot 'infra/k8s/base')) -join "`n"
+& (Join-Path $PSScriptRoot 'test-runtime-network.ps1')
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
-}
-foreach ($required in @('runtimeClassName:\s+gvisor', 'name:\s+default-deny-all', 'readOnlyRootFilesystem:\s+true')) {
-    if ($rendered -notmatch $required) {
-        throw "Rendered Kubernetes resources are missing required pattern: $required"
-    }
 }
 
 $composeValidationValues = @{
