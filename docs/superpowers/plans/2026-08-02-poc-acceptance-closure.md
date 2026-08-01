@@ -176,24 +176,24 @@ Document the disposable migration test and live acceptance sequence in README. C
 - Create: `docs/poc-acceptance-report.md`
 - Modify: `docs/implementation-plan.md`
 
-- [ ] **Step 1: Collect evidence**
+- [x] **Step 1: Collect evidence**
 
 Record commit SHA, component versions, test counts, migration result, JWT smoke result, and viewport results without secrets.
 
-- [ ] **Step 2: Map every criterion**
+- [x] **Step 2: Map every criterion**
 
 Add one row per FND, API, WEB, RUN, INF, and VER criterion. Use only PASS, PARTIAL, EXCEPTION, or NOT RUN. Every non-pass row names the consequence and next slice.
 
-- [ ] **Step 3: Reconcile old worktree state**
+- [x] **Step 3: Reconcile old worktree state**
 
 Compare `feat/task3-schema-contract-clean` at file and patch level. Remove it only if its unique behavior is present or superseded. Preserve `stash@{0}` throughout this slice.
 
-- [ ] **Step 4: Run final gates**
+- [x] **Step 4: Run final gates**
 
 Run `.\scripts\verify.ps1`, `.\scripts\test-postgres-upgrade.ps1`, and `git diff --check`.
 Expected: all exit 0.
 
-- [ ] **Step 5: Review and commit evidence**
+- [x] **Step 5: Review and commit evidence**
 
 Confirm no secret or production-readiness claim is present. Commit as `docs: record poc acceptance evidence`.
 
@@ -202,9 +202,11 @@ Confirm no secret or production-readiness claim is present. Commit as `docs: rec
 **Files:**
 - No code changes in this plan.
 
-- [ ] **Step 1: Decide local acceptance**
+- [x] **Step 1: Decide local acceptance**
 
 Proceed only when migration, identity, Portal, and root gates pass and exceptions are accurately recorded.
+
+Decision: PARTIAL. Local migration, identity, API, Portal component, and root gates pass, and exceptions are recorded. Full PoC acceptance remains blocked by browser viewport evidence and the external golden path.
 
 - [ ] **Step 2: Start the Harbor/Cosign design cycle**
 
