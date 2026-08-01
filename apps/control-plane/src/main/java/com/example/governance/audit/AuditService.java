@@ -26,4 +26,10 @@ public class AuditService {
         auditEvents.save(new AuditEvent(actor.subject(), actor.department(), "RELEASE_TRANSITION_DENIED", releaseId,
                 "DENY", digest, occurredAt));
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDeniedApproval(Actor actor, String releaseId, String digest, Instant occurredAt) {
+        auditEvents.save(new AuditEvent(actor.subject(), actor.department(), "RELEASE_APPROVAL_DENIED", releaseId,
+                "DENY", digest, occurredAt));
+    }
 }

@@ -2,6 +2,7 @@ package com.example.governance.api;
 
 import com.example.governance.release.InvalidArtifactReferenceException;
 import com.example.governance.release.InvalidReleaseTransitionException;
+import com.example.governance.release.SegregationOfDutiesException;
 import com.example.governance.release.ArtifactVerificationException;
 import com.example.governance.deployment.DeploymentIntegrationUnavailableException;
 import com.example.governance.manifest.InvalidCapabilityManifestException;
@@ -15,6 +16,12 @@ class ApiExceptionHandler {
     @ExceptionHandler(InvalidReleaseTransitionException.class)
     ResponseEntity<ApiError> invalidTransition(InvalidReleaseTransitionException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError("INVALID_RELEASE_TRANSITION", exception.getMessage()));
+    }
+
+    @ExceptionHandler(SegregationOfDutiesException.class)
+    ResponseEntity<ApiError> segregationOfDuties(SegregationOfDutiesException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError("SEGREGATION_OF_DUTIES", exception.getMessage()));
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

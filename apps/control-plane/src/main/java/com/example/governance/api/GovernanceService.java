@@ -16,6 +16,7 @@ import com.example.governance.release.InvalidReleaseTransitionException;
 import com.example.governance.release.Release;
 import com.example.governance.release.ReleaseDependency;
 import com.example.governance.release.ReleaseRepository;
+import com.example.governance.release.SegregationOfDutiesException;
 import com.example.governance.release.VerificationEvidence;
 import com.example.governance.security.Actor;
 import com.example.governance.security.CurrentActor;
@@ -113,7 +114,17 @@ public class GovernanceService {
 
     @Transactional
     public Release approve(String releaseId) {
-        return transition(releaseId, "RELEASE_APPROVED", "APPROVED", Release::approve);
+        Actor actor = currentActor.require();
+        Release release = requireRelease(releaseId);
+        requireDepartment(actor, requireCapability(release.capabilityId()).department());
+        try {
+            release.approve(actor.subject(), now());
+        } catch (SegregationOfDutiesException exception) {
+            auditService.recordDeniedApproval(actor, releaseId, release.digest(), now());
+            throw exception;
+        }
+        auditService.record(actor, "RELEASE_APPROVED", releaseId, "APPROVED", release.digest(), now());
+        return release;
     }
 
     @Transactional

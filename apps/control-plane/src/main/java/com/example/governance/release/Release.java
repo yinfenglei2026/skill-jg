@@ -117,6 +117,10 @@ public class Release {
     }
 
     public void approve(String actor, Instant occurredAt) {
+        if (state == ReleaseState.REVIEW_REQUIRED
+                && transitions.get(transitions.size() - 1).actor().equals(actor)) {
+            throw new SegregationOfDutiesException(actor);
+        }
         transition(Set.of(ReleaseState.REVIEW_REQUIRED), ReleaseState.APPROVED, actor, occurredAt);
         approval = new ReleaseApproval(digest, actor, occurredAt);
     }

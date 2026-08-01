@@ -173,6 +173,38 @@ class GovernanceApiTest {
     }
 
     @Test
+    void rejects_approval_by_the_actor_who_required_review_and_audits_the_denial() throws Exception {
+        String dualRoleActor = "dual-role@example.internal";
+        createCapability("support-agent", "AGENT");
+        ManifestFixture manifest = manifest("support-agent", "Agent", "1.0.0", List.of());
+        registerRelease("support-agent", "1.0.0", manifest).andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/validate")
+                        .with(as("REVIEWER", dualRoleActor)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/review-required")
+                        .with(as("REVIEWER", dualRoleActor)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/approve")
+                        .with(as("APPROVER", dualRoleActor)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SEGREGATION_OF_DUTIES"));
+
+        mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0")
+                        .with(as("READ_ONLY", "auditor@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("REVIEW_REQUIRED"));
+        mockMvc.perform(get("/api/v1/audit-events")
+                        .with(as("READ_ONLY", "auditor@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(5)))
+                .andExpect(jsonPath("$[4].action").value("RELEASE_APPROVAL_DENIED"))
+                .andExpect(jsonPath("$[4].actor").value(dualRoleActor))
+                .andExpect(jsonPath("$[4].decision").value("DENY"));
+    }
+
+    @Test
     void rejects_unauthenticated_and_wrong_role_deployment_requests() throws Exception {
         mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments"))
                 .andExpect(status().isUnauthorized());

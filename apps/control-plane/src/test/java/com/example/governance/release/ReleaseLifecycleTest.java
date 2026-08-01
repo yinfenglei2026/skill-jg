@@ -21,12 +21,29 @@ class ReleaseLifecycleTest {
 
         release.validationPassed("validation-bot", Instant.parse("2026-07-25T00:01:00Z"));
         release.reviewRequired("security-reviewer", Instant.parse("2026-07-25T00:01:30Z"));
-        release.approve("security-reviewer", Instant.parse("2026-07-25T00:02:00Z"));
+        release.approve("release-approver", Instant.parse("2026-07-25T00:02:00Z"));
 
         assertThat(release.state()).isEqualTo(ReleaseState.APPROVED);
         assertThat(release.approval().digest()).isEqualTo(DIGEST);
         assertThat(release.transitions()).extracting(ReleaseTransition::to)
                 .containsExactly(ReleaseState.VALIDATING, ReleaseState.REVIEW_REQUIRED, ReleaseState.APPROVED);
+    }
+
+    @Test
+    void refuses_approval_by_the_actor_who_required_review() {
+        Release release = Release.draft("support-agent", "1.0.0",
+                "oci://registry.example.internal/governance/support-agent@" + DIGEST,
+                DIGEST, Instant.parse("2026-07-25T00:00:00Z"));
+
+        release.validationPassed("validation-bot", Instant.parse("2026-07-25T00:01:00Z"));
+        release.reviewRequired("dual-role@example.internal", Instant.parse("2026-07-25T00:02:00Z"));
+
+        assertThatThrownBy(() -> release.approve(
+                "dual-role@example.internal", Instant.parse("2026-07-25T00:03:00Z")))
+                .isInstanceOf(SegregationOfDutiesException.class);
+        assertThat(release.state()).isEqualTo(ReleaseState.REVIEW_REQUIRED);
+        assertThat(release.transitions()).extracting(ReleaseTransition::to)
+                .containsExactly(ReleaseState.VALIDATING, ReleaseState.REVIEW_REQUIRED);
     }
 
     @Test
