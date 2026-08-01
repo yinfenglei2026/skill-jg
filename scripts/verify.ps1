@@ -1,9 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$maven = Join-Path $repositoryRoot 'mvnw.cmd'
-if (-not (Test-Path -LiteralPath $maven)) {
-    throw "Maven Wrapper was not found at $maven."
+$mavenWrapperJar = Join-Path $repositoryRoot '.mvn/wrapper/maven-wrapper.jar'
+if (-not (Test-Path -LiteralPath $mavenWrapperJar)) {
+    $wrapperPropertiesPath = Join-Path $repositoryRoot '.mvn/wrapper/maven-wrapper.properties'
+    $wrapperProperties = Get-Content $wrapperPropertiesPath -Raw | ConvertFrom-StringData
+    Invoke-WebRequest -UseBasicParsing -Uri $wrapperProperties.wrapperUrl -OutFile $mavenWrapperJar
 }
 
 $docker = (Get-Command docker -ErrorAction Stop).Source
@@ -26,8 +28,8 @@ if (-not $standardComposeAvailable) {
     $composePrefix = @()
 }
 
-$mavenCommand = "call `"$maven`" -B -pl apps/control-plane verify"
-& $env:ComSpec /d /s /c $mavenCommand
+& java "-Dmaven.multiModuleProjectDirectory=$repositoryRoot" -classpath $mavenWrapperJar `
+    org.apache.maven.wrapper.MavenWrapperMain -B -pl apps/control-plane verify
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
