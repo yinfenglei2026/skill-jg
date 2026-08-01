@@ -127,7 +127,8 @@ $postgresUpgradeScript = Get-Content $postgresUpgradeScriptPath -Raw
 if ($postgresUpgradeScript -notmatch 'governance-upgrade-\$PID' -or
     $postgresUpgradeScript -notmatch '--project-name' -or
     $postgresUpgradeScript -notmatch 'down.*--volumes' -or
-    $postgresUpgradeScript -match 'if \(\$started\)') {
+    $postgresUpgradeScript -match 'if \(\$started\)' -or
+    $postgresUpgradeScript -match '& \$docker info') {
     throw 'PostgreSQL upgrade verification must isolate and clean its Compose project.'
 }
 

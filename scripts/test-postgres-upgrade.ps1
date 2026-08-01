@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+Import-Module (Join-Path $PSScriptRoot 'local-identity.psm1') -Force
 $projectName = "governance-upgrade-$PID"
 if ($projectName -notmatch '^governance-upgrade-\d+$') {
     throw 'Refusing to use an invalid disposable Compose project name.'
@@ -16,8 +17,8 @@ if (Test-Path -LiteralPath $dockerDesktopCompose) {
     $composePrefix = @('compose')
 }
 
-& $docker info *> $null
-if ($LASTEXITCODE -ne 0) {
+$dockerInfo = Invoke-GovernanceNativeCommand -FilePath $docker -ArgumentList @('info')
+if ($dockerInfo.ExitCode -ne 0) {
     throw 'Docker Engine must be running for the PostgreSQL upgrade verification.'
 }
 
