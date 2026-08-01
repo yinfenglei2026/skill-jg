@@ -89,19 +89,19 @@ Expected: API-client tests pass. Commit as `feat: add portal governance mutation
 - Create: `apps/portal/src/release-actions.ts`
 - Create: `apps/portal/test/release-actions.vitest.ts`
 
-- [ ] **Step 1: Write the failing action-matrix tests**
+- [x] **Step 1: Write the failing action-matrix tests**
 
 Cover REVIEWER/DRAFT -> validate, REVIEWER/VALIDATING -> review-required, APPROVER/REVIEW_REQUIRED -> approve, OPERATOR/APPROVED -> publish, OPERATOR/PUBLISHED -> deploy, and no actions for READ_ONLY or mismatched roles.
 
-- [ ] **Step 2: Verify module-not-found failure**
+- [x] **Step 2: Verify module-not-found failure**
 
 Run the focused Vitest file before creating the implementation.
 
-- [ ] **Step 3: Implement normalization and the explicit matrix**
+- [x] **Step 3: Implement normalization and the explicit matrix**
 
 `normalizeRoles(profile)` accepts Keycloak `realm_access.roles` and flat `roles`, normalizes hyphens to underscores and uppercase, and deduplicates. `actionsFor(roles, state)` uses a data table and returns stable action IDs, labels, and transition/deployment kind.
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 Expected: all action cases pass. Commit as `feat: derive portal release actions`.
 
