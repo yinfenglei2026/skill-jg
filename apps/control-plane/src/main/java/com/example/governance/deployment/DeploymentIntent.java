@@ -35,10 +35,10 @@ public class DeploymentIntent {
     @Column(nullable = false, length = 32)
     private DeploymentStatus status;
 
-    @Column(name = "requested_actor", nullable = false, updatable = false, length = 256)
+    @Column(name = "requested_actor", nullable = false, length = 256)
     private String requestedActor;
 
-    @Column(name = "requested_at", nullable = false, updatable = false)
+    @Column(name = "requested_at", nullable = false)
     private Instant requestedAt;
 
     @Column(name = "observed_at")
@@ -69,11 +69,27 @@ public class DeploymentIntent {
         status = DeploymentStatus.RECONCILING;
     }
 
+    public void restart(Release release, Actor actor, Instant requestedAt) {
+        if (!desiredDigest.equals(release.digest())) {
+            throw new IllegalArgumentException("Deployment intent digest cannot change");
+        }
+        status = DeploymentStatus.RECONCILING;
+        observedDigest = null;
+        observedAt = null;
+        requestedActor = actor.subject();
+        this.requestedAt = requestedAt;
+    }
+
     public void observe(RuntimeObservation observation, Instant occurredAt) {
         observedDigest = observation.digest();
         status = observation.status() == DeploymentStatus.READY && !desiredDigest.equals(observation.digest())
                 ? DeploymentStatus.DRIFTED
                 : observation.status();
+        observedAt = occurredAt;
+    }
+
+    public void fail(Instant occurredAt) {
+        status = DeploymentStatus.FAILED;
         observedAt = occurredAt;
     }
 

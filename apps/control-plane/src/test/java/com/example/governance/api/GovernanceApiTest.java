@@ -1,6 +1,9 @@
 package com.example.governance.api;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -11,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.governance.manifest.CapabilityPackage;
 import com.example.governance.manifest.CapabilityPackageParser;
+import com.example.governance.deployment.DeploymentIntegrationUnavailableException;
+import com.example.governance.deployment.LocalRuntimeObserver;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -19,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -40,6 +46,9 @@ class GovernanceApiTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @SpyBean
+    private LocalRuntimeObserver runtimeObserver;
 
     @Test
     void publishes_only_after_role_guarded_transitions_and_audits_jwt_actor() throws Exception {
@@ -250,13 +259,21 @@ class GovernanceApiTest {
         ManifestFixture published = createPublishedRelease();
 
         String digest = published.digest();
-        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+        String firstDeployment = mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
                         .with(as("OPERATOR", "operator@example.internal")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.releaseId").value("support-agent:1.0.0"))
                 .andExpect(jsonPath("$.digest").value(digest))
                 .andExpect(jsonPath("$.status").value("READY"))
-                .andExpect(jsonPath("$.observedDigest").value(digest));
+                .andExpect(jsonPath("$.observedDigest").value(digest))
+                .andReturn().getResponse().getContentAsString();
+        String deploymentId = JSON.readTree(firstDeployment).get("id").asText();
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(deploymentId))
+                .andExpect(jsonPath("$.status").value("READY"));
 
         mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0/deployment")
                         .with(as("READ_ONLY", "reader@example.internal")))
@@ -284,6 +301,38 @@ class GovernanceApiTest {
         mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deploying")
                         .with(as("OPERATOR", "operator@example.internal")))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void persists_a_failed_deployment_and_retries_the_same_intent() throws Exception {
+        ManifestFixture published = createPublishedRelease();
+        doThrow(new DeploymentIntegrationUnavailableException("Runtime observation unavailable"))
+                .doCallRealMethod()
+                .when(runtimeObserver).observe(any());
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "operator@example.internal")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("DEPLOYMENT_INTEGRATION_UNAVAILABLE"));
+
+        String failedDeployment = mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0/deployment")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andReturn().getResponse().getContentAsString();
+        String deploymentId = JSON.readTree(failedDeployment).get("id").asText();
+
+        mockMvc.perform(get("/api/v1/releases/support-agent:1.0.0")
+                        .with(as("READ_ONLY", "reader@example.internal")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("FAILED"));
+
+        mockMvc.perform(post("/api/v1/releases/support-agent:1.0.0/deployments")
+                        .with(as("OPERATOR", "retry-operator@example.internal")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(deploymentId))
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.observedDigest").value(published.digest()));
     }
 
     @Test

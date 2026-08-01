@@ -16,7 +16,6 @@ import com.example.governance.release.InvalidReleaseTransitionException;
 import com.example.governance.release.Release;
 import com.example.governance.release.ReleaseDependency;
 import com.example.governance.release.ReleaseRepository;
-import com.example.governance.release.ReleaseState;
 import com.example.governance.release.VerificationEvidence;
 import com.example.governance.security.Actor;
 import com.example.governance.security.CurrentActor;
@@ -165,18 +164,6 @@ public class GovernanceService {
         Actor actor = currentActor.require();
         Release release = requireRelease(releaseId);
         requireDepartment(actor, requireCapability(release.capabilityId()).department());
-        return release;
-    }
-
-    @Transactional(readOnly = true)
-    public Release requirePublishedReleaseForDeployment(String releaseId) {
-        Actor actor = currentActor.require();
-        Release release = requireRelease(releaseId);
-        requireDepartment(actor, requireCapability(release.capabilityId()).department());
-        if (release.state() != ReleaseState.PUBLISHED) {
-            auditService.recordDeniedTransition(actor, releaseId, release.digest(), now());
-            throw new InvalidReleaseTransitionException(release.state(), ReleaseState.DEPLOYING);
-        }
         return release;
     }
 

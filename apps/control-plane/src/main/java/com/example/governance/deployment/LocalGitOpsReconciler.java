@@ -8,6 +8,5 @@ import org.springframework.stereotype.Component;
 public class LocalGitOpsReconciler implements GitOpsReconciler {
     @Override
     public void reconcile(DeploymentIntent intent) {
-        intent.reconciling();
     }
 }
