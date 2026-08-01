@@ -112,23 +112,23 @@ Expected: all action cases pass. Commit as `feat: derive portal release actions`
 - Modify: `apps/portal/src/styles.css`
 - Modify: `apps/portal/test/App.vitest.tsx`
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Render an APPROVER on REVIEW_REQUIRED, verify the full digest beside Approve, click it, and assert mutation plus refresh. Add forbidden/conflict cases that preserve the selected release and show an alert. Add a READ_ONLY case with no mutation controls.
 
-- [ ] **Step 2: Verify the component tests fail**
+- [x] **Step 2: Verify the component tests fail**
 
 Expected: no action control and no mutation call.
 
-- [ ] **Step 3: Implement stable mutation state and refresh**
+- [x] **Step 3: Implement stable mutation state and refresh**
 
 Derive roles with `normalizeRoles`, render `actionsFor`, disable controls while pending, refresh releases on success while preserving selection, and render concise 403/409/general alerts without clearing release detail.
 
-- [ ] **Step 4: Add responsive action styling**
+- [x] **Step 4: Add responsive action styling**
 
 Use one unframed action band below the digest, wrapping command labels, radii no greater than 8px, and stable control heights. Do not introduce nested cards.
 
-- [ ] **Step 5: Run Portal tests and build, then commit**
+- [x] **Step 5: Run Portal tests and build, then commit**
 
 Run `npm test` and `npm run build` in `apps/portal`.
 Expected: Vitest, TypeScript, and Vite pass. Commit as `feat: expose governed release actions`.

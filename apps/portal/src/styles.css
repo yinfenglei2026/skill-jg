@@ -25,6 +25,9 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
 .button-primary:hover { background: #105450; }
 .button-secondary { color: #1c3338; border-color: #b7c7cd; background: #fff; }
 .button-secondary:hover { background: #eef3f4; }
+.button-danger { color: #8c3931; border-color: #d7aaa5; background: #fff; }
+.button-danger:hover { background: #fbedeb; }
+.button:disabled { cursor: wait; opacity: .62; }
 .workspace { display: grid; grid-template-columns: minmax(15rem, 21rem) minmax(0, 1fr); gap: 1px; min-height: calc(100vh - 6.4rem); background: #d9e0e5; }
 .sidebar, .content-panel { min-width: 0; padding: clamp(1rem, 3vw, 2.5rem); background: #f4f6f8; }
 .content-panel { background: #fff; }
@@ -52,6 +55,12 @@ tr.is-selected { background: #f3f8f8; }
 .detail-list > div { display: grid; grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr); gap: 1rem; }
 .detail-list dt { color: #52616b; font-size: .8rem; font-weight: 700; }
 .detail-list dd { margin: 0; min-width: 0; }
+.release-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 1.25rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #d9e0e5; }
+.action-context { min-width: 0; }
+.action-context code { display: block; color: #315056; font-size: .78rem; }
+.action-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; min-height: 2.65rem; }
+.action-controls .button { min-height: 2.65rem; white-space: normal; }
+.action-error { margin: 1rem 0 0; color: #8c3931; line-height: 1.45; }
 .auth-panel { max-width: 34rem; margin: clamp(4rem, 12vh, 9rem) auto; padding: 0 1.25rem; }
 .auth-panel h2 { max-width: 24rem; font-size: clamp(1.5rem, 4vw, 2.4rem); line-height: 1.1; }
 .auth-panel p:not(.eyebrow) { color: #52616b; line-height: 1.6; }
@@ -64,4 +73,6 @@ tr.is-selected { background: #f3f8f8; }
   .sidebar, .content-panel { padding: 1.25rem; }
   .sidebar { border-bottom: 1px solid #d9e0e5; }
   .detail-list > div { grid-template-columns: 1fr; gap: .25rem; }
+  .release-actions { grid-template-columns: 1fr; align-items: stretch; }
+  .action-controls { justify-content: flex-start; }
 }

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App, type AuthSession } from '../src/App';
 import type { GovernanceApi } from '../src/governance-api';
@@ -26,6 +26,8 @@ function api(overrides: Partial<GovernanceApi> = {}): GovernanceApi {
     getCapability: vi.fn(),
     listReleases: vi.fn().mockResolvedValue([]),
     getRelease: vi.fn(),
+    transitionRelease: vi.fn(),
+    deployRelease: vi.fn(),
     ...overrides
   };
 }
@@ -94,5 +96,96 @@ describe('portal workflow', () => {
     unmount();
 
     expect(session.events.removeAccessTokenExpired).toHaveBeenCalledWith(onExpired);
+  });
+
+  it('lets an approver confirm the full digest and refreshes the release after approval', async () => {
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const approver = {
+      access_token: 'approver-token',
+      profile: {
+        sub: 'approver.customer.test',
+        department: 'customer-operations',
+        realm_access: { roles: ['approver'] }
+      }
+    } as never;
+    const reviewRequired = { id: 'support-agent:1.0.0', version: '1.0.0', state: 'REVIEW_REQUIRED', digest };
+    const approved = { ...reviewRequired, state: 'APPROVED' };
+    const listReleases = vi.fn()
+      .mockResolvedValueOnce([reviewRequired])
+      .mockResolvedValueOnce([approved]);
+    const transitionRelease = vi.fn().mockResolvedValue(approved);
+    const governanceApi = api({
+      listCapabilities: vi.fn().mockResolvedValue([
+        { id: 'support-agent', name: 'Support agent', department: 'customer-operations', type: 'AGENT' }
+      ]),
+      listReleases,
+      transitionRelease
+    });
+    render(<App authSession={authSession(approver)} api={governanceApi} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Support agent/ }));
+    const actions = await screen.findByRole('region', { name: 'Release actions' });
+    expect(within(actions).getByText(digest)).toBeTruthy();
+    await userEvent.click(within(actions).getByRole('button', { name: 'Approve' }));
+
+    expect(transitionRelease).toHaveBeenCalledWith('approver-token', 'support-agent:1.0.0', 'approve');
+    expect((await screen.findAllByText('Approved')).length).toBeGreaterThan(0);
+    expect(listReleases).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not render mutation controls for a read-only user', async () => {
+    const readOnly = {
+      ...user,
+      profile: {
+        ...user.profile,
+        realm_access: { roles: ['read-only'] }
+      }
+    } as never;
+    const governanceApi = api({
+      listCapabilities: vi.fn().mockResolvedValue([
+        { id: 'support-agent', name: 'Support agent', department: 'customer-operations', type: 'AGENT' }
+      ]),
+      listReleases: vi.fn().mockResolvedValue([
+        { id: 'support-agent:1.0.0', version: '1.0.0', state: 'PUBLISHED', digest: `sha256:${'b'.repeat(64)}` }
+      ])
+    });
+    render(<App authSession={authSession(readOnly)} api={governanceApi} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Support agent/ }));
+    expect((await screen.findAllByText('Published')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('region', { name: 'Release actions' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deploy' })).toBeNull();
+  });
+
+  it.each([
+    [403, 'You are not authorized to perform this release action.'],
+    [409, 'The release changed or this action conflicts with its current state.']
+  ])('keeps release detail visible when a mutation returns HTTP %s', async (status, expectedMessage) => {
+    const digest = `sha256:${'c'.repeat(64)}`;
+    const operator = {
+      access_token: 'operator-token',
+      profile: {
+        sub: 'operator.customer.test',
+        department: 'customer-operations',
+        realm_access: { roles: ['operator'] }
+      }
+    } as never;
+    const governanceApi = api({
+      listCapabilities: vi.fn().mockResolvedValue([
+        { id: 'support-agent', name: 'Support agent', department: 'customer-operations', type: 'AGENT' }
+      ]),
+      listReleases: vi.fn().mockResolvedValue([
+        { id: 'support-agent:1.0.0', version: '1.0.0', state: 'PUBLISHED', digest }
+      ]),
+      deployRelease: vi.fn().mockRejectedValue(Object.assign(new Error('request failed'), { status }))
+    });
+    render(<App authSession={authSession(operator)} api={governanceApi} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Support agent/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Deploy' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(expectedMessage);
+    expect(screen.getAllByText(digest).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'support-agent:1.0.0' })).toBeTruthy();
   });
 });

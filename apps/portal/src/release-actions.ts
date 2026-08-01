@@ -1,14 +1,13 @@
 import type { ReleaseTransition } from './governance-api';
 
-export type ReleaseAction = {
-  id: ReleaseTransition | 'deploy';
-  label: string;
-  kind: 'transition' | 'deployment';
-};
+export type ReleaseAction =
+  | { id: ReleaseTransition; label: string; kind: 'transition' }
+  | { id: 'deploy'; label: string; kind: 'deployment' };
 
 type RoleProfile = {
   realm_access?: unknown;
   roles?: unknown;
+  [claim: string]: unknown;
 };
 
 const actionMatrix: Record<string, Record<string, ReleaseAction[]>> = {

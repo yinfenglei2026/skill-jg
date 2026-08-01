@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Capability, GovernanceApi, Release } from './governance-api';
+import { actionsFor, normalizeRoles, type ReleaseAction } from './release-actions';
 
 export type PortalUser = {
   access_token: string;
@@ -50,6 +51,15 @@ function shortDigest(digest: string): string {
   return digest.length > 22 ? `${digest.slice(0, 19)}...` : digest;
 }
 
+function releaseActionError(error: unknown): string {
+  const status = error && typeof error === 'object' && 'status' in error
+    ? (error as { status?: unknown }).status
+    : undefined;
+  if (status === 403) return 'You are not authorized to perform this release action.';
+  if (status === 409) return 'The release changed or this action conflicts with its current state.';
+  return 'The release action could not be completed.';
+}
+
 export function App({ authSession, api }: AppProps) {
   const [user, setUser] = useState<PortalUser | null>(null);
   const [catalogState, setCatalogState] = useState<CatalogState>('loading');
@@ -60,6 +70,8 @@ export function App({ authSession, api }: AppProps) {
   const [releaseState, setReleaseState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [releaseError, setReleaseError] = useState<Error | null>(null);
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
+  const [mutationAction, setMutationAction] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const callbackPromise = useRef<Promise<PortalUser> | null>(null);
 
   const department = typeof user?.profile.department === 'string' ? user.profile.department : 'Department unavailable';
@@ -70,6 +82,11 @@ export function App({ authSession, api }: AppProps) {
   const selectedRelease = useMemo(
     () => releases.find((release) => release.id === selectedReleaseId) ?? releases[0] ?? null,
     [releases, selectedReleaseId]
+  );
+  const roles = useMemo(() => normalizeRoles(user?.profile ?? {}), [user]);
+  const releaseActions = useMemo(
+    () => selectedRelease ? actionsFor(roles, selectedRelease.state) : [],
+    [roles, selectedRelease]
   );
 
   useEffect(() => {
@@ -124,6 +141,7 @@ export function App({ authSession, api }: AppProps) {
     let active = true;
     setReleaseState('loading');
     setReleaseError(null);
+    setMutationError(null);
     setSelectedReleaseId(null);
     api.listReleases(user.access_token, selectedCapabilityId)
       .then((nextReleases) => {
@@ -143,6 +161,28 @@ export function App({ authSession, api }: AppProps) {
 
   const signIn = () => void authSession.signinRedirect();
   const signOut = () => void authSession.signoutRedirect();
+  const performReleaseAction = async (action: ReleaseAction) => {
+    if (!user || !selectedCapabilityId || !selectedRelease) return;
+    setMutationAction(action.id);
+    setMutationError(null);
+    try {
+      if (action.kind === 'deployment') {
+        await api.deployRelease(user.access_token, selectedRelease.id);
+      } else {
+        await api.transitionRelease(user.access_token, selectedRelease.id, action.id);
+      }
+      const nextReleases = await api.listReleases(user.access_token, selectedCapabilityId);
+      setReleases(nextReleases);
+      setReleaseState('ready');
+      setSelectedReleaseId((current) => current && nextReleases.some((release) => release.id === current)
+        ? current
+        : nextReleases[0]?.id ?? null);
+    } catch (error) {
+      setMutationError(releaseActionError(error));
+    } finally {
+      setMutationAction(null);
+    }
+  };
 
   return (
     <div className="app-shell">
@@ -224,7 +264,7 @@ export function App({ authSession, api }: AppProps) {
                     <tbody>
                       {releases.map((release) => (
                         <tr key={release.id} className={selectedRelease?.id === release.id ? 'is-selected' : undefined}>
-                          <td><button type="button" className="table-link" onClick={() => setSelectedReleaseId(release.id)}>{release.version}</button></td>
+                          <td><button type="button" className="table-link" onClick={() => { setSelectedReleaseId(release.id); setMutationError(null); }}>{release.version}</button></td>
                           <td><span className={`state state-${release.state.toLowerCase()}`}>{stateLabels[release.state] ?? release.state}</span></td>
                           <td><code title={release.digest}>{shortDigest(release.digest)}</code></td>
                         </tr>
@@ -245,6 +285,28 @@ export function App({ authSession, api }: AppProps) {
                       <div><dt>Digest</dt><dd><code>{selectedRelease.digest}</code></dd></div>
                       {selectedRelease.artifactReference ? <div><dt>Artifact reference</dt><dd><code>{selectedRelease.artifactReference}</code></dd></div> : null}
                     </dl>
+                    {releaseActions.length > 0 ? (
+                      <section className="release-actions" aria-label="Release actions" aria-busy={mutationAction !== null}>
+                        <div className="action-context">
+                          <p className="eyebrow">Authorized action</p>
+                          <code>{selectedRelease.digest}</code>
+                        </div>
+                        <div className="action-controls">
+                          {releaseActions.map((action, index) => (
+                            <button
+                              key={action.id}
+                              type="button"
+                              className={`button ${action.id === 'revoke' ? 'button-danger' : index === 0 ? 'button-primary' : 'button-secondary'}`}
+                              disabled={mutationAction !== null}
+                              onClick={() => void performReleaseAction(action)}
+                            >
+                              {action.label}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+                    {mutationError ? <p className="action-error" role="alert">{mutationError}</p> : null}
                   </article>
                 ) : null}
               </>
