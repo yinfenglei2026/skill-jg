@@ -48,6 +48,7 @@ foreach ($entry in $testEnvironment.GetEnumerator()) {
 }
 
 $testExitCode = 1
+$cleanupResult = $null
 try {
     & $compose @composePrefix --project-name $projectName --project-directory $repositoryRoot up -d postgres
     if ($LASTEXITCODE -ne 0) {
@@ -78,16 +79,27 @@ try {
         org.apache.maven.wrapper.MavenWrapperMain -B -pl apps/control-plane -Dtest=PostgresqlMigrationTest test
     $testExitCode = $LASTEXITCODE
 } finally {
-    & $compose @composePrefix --project-name $projectName --project-directory $repositoryRoot down --volumes
-    foreach ($entry in $previousEnvironment.GetEnumerator()) {
-        if ($null -eq $entry.Value) {
-            Remove-Item -Path "Env:$($entry.Key)" -ErrorAction SilentlyContinue
-        } else {
-            Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value
+    try {
+        $cleanupArguments = @($composePrefix) + @(
+            '--project-name', $projectName,
+            '--project-directory', "$repositoryRoot",
+            'down', '--volumes'
+        )
+        $cleanupResult = Invoke-GovernanceNativeCommand -FilePath $compose -ArgumentList $cleanupArguments
+    } finally {
+        foreach ($entry in $previousEnvironment.GetEnumerator()) {
+            if ($null -eq $entry.Value) {
+                Remove-Item -Path "Env:$($entry.Key)" -ErrorAction SilentlyContinue
+            } else {
+                Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value
+            }
         }
     }
 }
 
+if ($null -eq $cleanupResult -or $cleanupResult.ExitCode -ne 0) {
+    throw 'Disposable PostgreSQL cleanup failed.'
+}
 if ($testExitCode -ne 0) {
     exit $testExitCode
 }

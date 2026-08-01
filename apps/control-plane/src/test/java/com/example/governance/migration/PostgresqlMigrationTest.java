@@ -71,29 +71,71 @@ class PostgresqlMigrationTest {
     }
 
     private static void assertFixtureAndNullableImportPath(String url, String username, String password) throws Exception {
-        try (Connection connection = DriverManager.getConnection(url, username, password);
-             PreparedStatement dependency = connection.prepareStatement("""
-                     SELECT dependency_type, dependency_import_path
-                     FROM release_dependencies
-                     WHERE release_id = 'upgrade-agent:1.0.0' AND dependency_order = 0
-                     """);
-             ResultSet result = dependency.executeQuery()) {
-            assertThat(result.next()).isTrue();
-            assertThat(result.getString("dependency_type")).isEqualTo("SKILL");
-            assertThat(result.getString("dependency_import_path")).isNull();
-        }
+        try (Connection connection = DriverManager.getConnection(url, username, password)) {
+            try (PreparedStatement capability = connection.prepareStatement("""
+                    SELECT id, department, type
+                    FROM capabilities
+                    WHERE id = 'upgrade-agent'
+                    """); ResultSet result = capability.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString("id")).isEqualTo("upgrade-agent");
+                assertThat(result.getString("department")).isEqualTo("customer-operations");
+                assertThat(result.getString("type")).isEqualTo("AGENT");
+                assertThat(result.next()).isFalse();
+            }
 
-        try (Connection connection = DriverManager.getConnection(url, username, password);
-             PreparedStatement column = connection.prepareStatement("""
+            try (PreparedStatement release = connection.prepareStatement("""
+                    SELECT id, capability_id, version, artifact_reference, digest, created_at, state,
+                           entity_version, canonical_manifest, manifest_digest
+                    FROM releases
+                    WHERE id = 'upgrade-agent:1.0.0'
+                    """); ResultSet result = release.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString("id")).isEqualTo("upgrade-agent:1.0.0");
+                assertThat(result.getString("capability_id")).isEqualTo("upgrade-agent");
+                assertThat(result.getString("version")).isEqualTo("1.0.0");
+                assertThat(result.getString("artifact_reference")).isEqualTo(
+                        "oci://registry.example.internal/upgrade-agent@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+                assertThat(result.getString("digest")).isEqualTo(
+                        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+                assertThat(result.getTimestamp("created_at")).isNotNull();
+                assertThat(result.getString("state")).isEqualTo("DRAFT");
+                assertThat(result.getLong("entity_version")).isZero();
+                assertThat(result.getString("canonical_manifest")).isEqualTo("{}");
+                assertThat(result.getString("manifest_digest")).isEqualTo(
+                        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+                assertThat(result.next()).isFalse();
+            }
+
+            try (PreparedStatement dependency = connection.prepareStatement("""
+                    SELECT release_id, dependency_order, dependency_capability_id, dependency_type,
+                           dependency_version, dependency_digest, dependency_import_path
+                    FROM release_dependencies
+                    WHERE release_id = 'upgrade-agent:1.0.0' AND dependency_order = 0
+                    """); ResultSet result = dependency.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString("release_id")).isEqualTo("upgrade-agent:1.0.0");
+                assertThat(result.getInt("dependency_order")).isZero();
+                assertThat(result.getString("dependency_capability_id")).isEqualTo("shared-skill");
+                assertThat(result.getString("dependency_type")).isEqualTo("SKILL");
+                assertThat(result.getString("dependency_version")).isEqualTo("2.0.0");
+                assertThat(result.getString("dependency_digest")).isEqualTo(
+                        "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+                assertThat(result.getString("dependency_import_path")).isNull();
+                assertThat(result.next()).isFalse();
+            }
+
+            try (PreparedStatement column = connection.prepareStatement("""
                      SELECT is_nullable
                      FROM information_schema.columns
                      WHERE table_schema = 'public'
                        AND table_name = 'release_dependencies'
                        AND column_name = 'dependency_import_path'
-                     """);
-             ResultSet result = column.executeQuery()) {
-            assertThat(result.next()).isTrue();
-            assertThat(result.getString("is_nullable")).isEqualTo("YES");
+                     """); ResultSet result = column.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString("is_nullable")).isEqualTo("YES");
+                assertThat(result.next()).isFalse();
+            }
         }
     }
 

@@ -165,20 +165,32 @@ export function App({ authSession, api }: AppProps) {
     if (!user || !selectedCapabilityId || !selectedRelease) return;
     setMutationAction(action.id);
     setMutationError(null);
+    let locallyUpdatedRelease: Release;
     try {
       if (action.kind === 'deployment') {
         await api.deployRelease(user.access_token, selectedRelease.id);
+        locallyUpdatedRelease = { ...selectedRelease, state: 'DEPLOYING' };
       } else {
-        await api.transitionRelease(user.access_token, selectedRelease.id, action.id);
+        locallyUpdatedRelease = await api.transitionRelease(user.access_token, selectedRelease.id, action.id);
       }
+      setReleases((current) => current.map((release) =>
+        release.id === locallyUpdatedRelease.id ? locallyUpdatedRelease : release
+      ));
+    } catch (error) {
+      setMutationError(releaseActionError(error));
+      setMutationAction(null);
+      return;
+    }
+
+    try {
       const nextReleases = await api.listReleases(user.access_token, selectedCapabilityId);
       setReleases(nextReleases);
       setReleaseState('ready');
       setSelectedReleaseId((current) => current && nextReleases.some((release) => release.id === current)
         ? current
         : nextReleases[0]?.id ?? null);
-    } catch (error) {
-      setMutationError(releaseActionError(error));
+    } catch {
+      setMutationError('The action succeeded, but release data could not be refreshed.');
     } finally {
       setMutationAction(null);
     }

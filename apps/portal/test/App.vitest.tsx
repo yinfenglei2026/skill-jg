@@ -133,6 +133,40 @@ describe('portal workflow', () => {
     expect(listReleases).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a successful transition when the follow-up refresh fails', async () => {
+    const digest = `sha256:${'d'.repeat(64)}`;
+    const approver = {
+      access_token: 'approver-token',
+      profile: {
+        sub: 'approver.customer.test',
+        department: 'customer-operations',
+        realm_access: { roles: ['approver'] }
+      }
+    } as never;
+    const reviewRequired = { id: 'support-agent:1.0.0', version: '1.0.0', state: 'REVIEW_REQUIRED', digest };
+    const approved = { ...reviewRequired, state: 'APPROVED' };
+    const listReleases = vi.fn()
+      .mockResolvedValueOnce([reviewRequired])
+      .mockRejectedValueOnce(new Error('refresh unavailable'));
+    const governanceApi = api({
+      listCapabilities: vi.fn().mockResolvedValue([
+        { id: 'support-agent', name: 'Support agent', department: 'customer-operations', type: 'AGENT' }
+      ]),
+      listReleases,
+      transitionRelease: vi.fn().mockResolvedValue(approved)
+    });
+    render(<App authSession={authSession(approver)} api={governanceApi} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Support agent/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    expect((await screen.findAllByText('Approved')).length).toBeGreaterThan(0);
+    expect((await screen.findByRole('alert')).textContent)
+      .toContain('The action succeeded, but release data could not be refreshed.');
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(listReleases).toHaveBeenCalledTimes(2);
+  });
+
   it('does not render mutation controls for a read-only user', async () => {
     const readOnly = {
       ...user,
