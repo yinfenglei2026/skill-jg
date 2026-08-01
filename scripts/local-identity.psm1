@@ -37,11 +37,39 @@ function Assert-GovernanceJwtClaims {
         [Parameter(Mandatory)][string]$ExpectedRole
     )
 
+    if ([string]::IsNullOrWhiteSpace($Claims.sub)) {
+        throw 'JWT subject claim is required.'
+    }
     if ($Claims.department -ne $ExpectedDepartment) {
         throw 'JWT department claim did not match.'
     }
     if ($Claims.realm_access.roles -notcontains $ExpectedRole) {
         throw 'JWT realm role claim did not match.'
+    }
+}
+
+function Assert-GovernancePostgresPortConsistency {
+    param(
+        [Parameter(Mandatory)][string]$JdbcUrl,
+        [Parameter(Mandatory)][string]$HostPort
+    )
+
+    $parsedHostPort = 0
+    if (-not [int]::TryParse($HostPort, [ref]$parsedHostPort) -or
+        $parsedHostPort -lt 1 -or $parsedHostPort -gt 65535) {
+        throw 'POSTGRES_HOST_PORT must be an integer between 1 and 65535.'
+    }
+    if (-not $JdbcUrl.StartsWith('jdbc:postgresql://', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'SPRING_DATASOURCE_URL must be a PostgreSQL JDBC URL.'
+    }
+    try {
+        $databaseUri = [Uri]::new($JdbcUrl.Substring(5))
+    } catch {
+        throw 'SPRING_DATASOURCE_URL must be a valid PostgreSQL JDBC URL.'
+    }
+    $jdbcPort = if ($databaseUri.Port -lt 0) { 5432 } else { $databaseUri.Port }
+    if ($jdbcPort -ne $parsedHostPort) {
+        throw 'SPRING_DATASOURCE_URL port must match POSTGRES_HOST_PORT.'
     }
 }
 
@@ -141,4 +169,4 @@ function Invoke-GovernanceNativeCommand {
     }
 }
 
-Export-ModuleMember -Function Get-GovernanceSyntheticIdentities, Get-JwtPayload, Assert-GovernanceJwtClaims, ConvertTo-GovernanceBase64Utf8, ConvertFrom-GovernanceJsonCollection, Invoke-GovernanceNativeCommand
+Export-ModuleMember -Function Get-GovernanceSyntheticIdentities, Get-JwtPayload, Assert-GovernanceJwtClaims, Assert-GovernancePostgresPortConsistency, ConvertTo-GovernanceBase64Utf8, ConvertFrom-GovernanceJsonCollection, Invoke-GovernanceNativeCommand

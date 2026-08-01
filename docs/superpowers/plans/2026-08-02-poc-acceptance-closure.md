@@ -140,23 +140,23 @@ Expected: Vitest, TypeScript, and Vite pass. Commit as `feat: expose governed re
 - Modify: `scripts/test-local-identity.ps1`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add a failing port-consistency contract**
+- [x] **Step 1: Add a failing port-consistency contract**
 
 Require startup to reject a `SPRING_DATASOURCE_URL` port that differs from `POSTGRES_HOST_PORT`, with both setting names in the error.
 
-- [ ] **Step 2: Implement the fail-fast check**
+- [x] **Step 2: Implement the fail-fast check**
 
 Parse the JDBC URI, default an omitted PostgreSQL port to 5432, validate `POSTGRES_HOST_PORT` as an integer, and compare before Compose starts.
 
-- [ ] **Step 3: Run script contract tests**
+- [x] **Step 3: Run script contract tests**
 
 Run `scripts/test-local-identity.ps1` without containers. Expected: all tests pass.
 
-- [ ] **Step 4: Start the local stack with untracked synthetic configuration**
+- [x] **Step 4: Start the local stack with untracked synthetic configuration**
 
 Use non-placeholder local passwords and matching host/JDBC ports. Start PostgreSQL, Keycloak, the local-profile control plane, and Vite. Never commit `.env` or `.env.local`.
 
-- [ ] **Step 5: Run Keycloak-to-Spring smoke**
+- [x] **Step 5: Run Keycloak-to-Spring smoke**
 
 Run `scripts/smoke-local-auth.ps1`. Expected: Keycloak JWT claims match and the catalog API returns 200 without printing the token.
 
@@ -164,7 +164,9 @@ Run `scripts/smoke-local-auth.ps1`. Expected: Keycloak JWT claims match and the 
 
 At desktop and mobile viewports, sign in as a synthetic role user, select a release, perform one permitted mutation, verify unauthorized controls remain absent, and inspect for overflow or overlap. Screenshots must contain no secrets.
 
-- [ ] **Step 7: Document commands and commit**
+Blocked on 2026-08-02: the external browser rejected localhost access because its admin-enforced policy could not be verified, and no in-app browser instance was available. The real approver JWT/API mutation and audit binding passed; viewport evidence remains NOT RUN.
+
+- [x] **Step 7: Document commands and commit**
 
 Document the disposable migration test and live acceptance sequence in README. Commit as `chore: make local acceptance reproducible`.
 

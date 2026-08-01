@@ -28,6 +28,41 @@ $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)).Trim
 $claims = Get-JwtPayload -AccessToken "header.$encoded.signature"
 Assert-GovernanceJwtClaims -Claims $claims -ExpectedDepartment 'customer-operations' -ExpectedRole 'owner'
 
+$missingSubjectError = $null
+try {
+    Assert-GovernanceJwtClaims `
+        -Claims ([pscustomobject]@{
+            department = 'customer-operations'
+            realm_access = [pscustomobject]@{ roles = @('owner') }
+        }) `
+        -ExpectedDepartment 'customer-operations' `
+        -ExpectedRole 'owner'
+} catch {
+    $missingSubjectError = $_.Exception.Message
+}
+if ($missingSubjectError -notmatch 'subject') {
+    throw 'JWT claim validation must reject access tokens without a subject.'
+}
+
+Assert-GovernancePostgresPortConsistency `
+    -JdbcUrl 'jdbc:postgresql://localhost:15432/governance' `
+    -HostPort '15432'
+Assert-GovernancePostgresPortConsistency `
+    -JdbcUrl 'jdbc:postgresql://localhost/governance' `
+    -HostPort '5432'
+$portMismatchError = $null
+try {
+    Assert-GovernancePostgresPortConsistency `
+        -JdbcUrl 'jdbc:postgresql://localhost:15432/governance' `
+        -HostPort '5432'
+} catch {
+    $portMismatchError = $_.Exception.Message
+}
+if ($portMismatchError -notmatch 'SPRING_DATASOURCE_URL' -or
+    $portMismatchError -notmatch 'POSTGRES_HOST_PORT') {
+    throw 'PostgreSQL port mismatch must identify both local settings.'
+}
+
 $encodedJson = ConvertTo-GovernanceBase64Utf8 '{"message":"expected utf8"}'
 $decodedJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedJson))
 if ($decodedJson -ne '{"message":"expected utf8"}') {
@@ -57,21 +92,31 @@ if ($provisioningScript -notmatch "'--userid'" -or
     $provisioningScript -match "(?m)^.*set-password.*'--temporary=false'.*$") {
     throw 'Identity provisioning must use the Keycloak 26 set-password options.'
 }
+if ($provisioningScript -match '\$standardComposeAvailable' -or
+    $provisioningScript -notmatch 'if \(Test-Path -LiteralPath \$dockerDesktopCompose\)') {
+    throw 'Identity provisioning must prefer the Docker Desktop Compose executable when it exists.'
+}
 
 $realm = Get-Content (Join-Path $PSScriptRoot '..\infra\local\keycloak\realm-governance.json') -Raw | ConvertFrom-Json
-if ($realm.userProfile.attributes.name -notcontains 'department' -or
+if ($realm.PSObject.Properties.Name -contains 'userProfile' -or
     $realm.defaultDefaultClientScopes -notcontains 'roles' -or
     $provisioningScript -notmatch 'users/profile' -or
-    $provisioningScript -notmatch 'default-client-scopes') {
-    throw 'Identity provisioning must converge the department profile and default client scopes.'
+    $provisioningScript -notmatch 'default-client-scopes' -or
+    $provisioningScript -notmatch "@\('basic', 'profile', 'email', 'roles', 'governance-department'\)") {
+    throw 'Realm import must remain Keycloak-compatible while provisioning converges profiles and scopes.'
 }
 
 $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $composeDeclaration = Get-Content (Join-Path $repositoryRoot 'compose.yaml') -Raw
 $exampleEnvironment = Get-Content (Join-Path $repositoryRoot '.env.example') -Raw
 if ($composeDeclaration -notmatch [regex]::Escape('${POSTGRES_HOST_PORT:-5432}') -or
-    $exampleEnvironment -notmatch '(?m)^POSTGRES_HOST_PORT=5432$') {
+    $exampleEnvironment -notmatch '(?m)^POSTGRES_HOST_PORT=5432$' -or
+    $exampleEnvironment -notmatch '(?m)^SPRING_PROFILES_ACTIVE=local$') {
     throw 'Local PostgreSQL must expose a configurable host port with a documented default.'
+}
+if ($exampleEnvironment -notmatch '(?m)^VITE_GOVERNANCE_OIDC_AUTHORITY=http://127\.0\.0\.1:8081/realms/governance$' -or
+    $exampleEnvironment -notmatch '(?m)^SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://127\.0\.0\.1:8081/realms/governance$') {
+    throw 'Local Keycloak URLs must use the IPv4 loopback address bound by Compose.'
 }
 
 $postgresUpgradeScriptPath = Join-Path $PSScriptRoot 'test-postgres-upgrade.ps1'
@@ -84,6 +129,12 @@ if ($postgresUpgradeScript -notmatch 'governance-upgrade-\$PID' -or
     $postgresUpgradeScript -notmatch 'down.*--volumes' -or
     $postgresUpgradeScript -match 'if \(\$started\)') {
     throw 'PostgreSQL upgrade verification must isolate and clean its Compose project.'
+}
+
+$startLocalScript = Get-Content (Join-Path $PSScriptRoot 'start-local.ps1') -Raw
+if ($startLocalScript -match '\$standardComposeAvailable' -or
+    $startLocalScript -notmatch 'if \(Test-Path -LiteralPath \$dockerDesktopCompose\)') {
+    throw 'Local startup must prefer the Docker Desktop Compose executable when it exists.'
 }
 
 $postgresInitScriptPath = Join-Path $repositoryRoot 'infra\local\postgres\init\01-create-databases.sh'

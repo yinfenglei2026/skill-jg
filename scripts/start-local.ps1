@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $environmentFile = Join-Path $repositoryRoot '.env'
 $maven = Join-Path $repositoryRoot 'mvnw.cmd'
+Import-Module (Join-Path $PSScriptRoot 'local-identity.psm1') -Force
 
 if (-not (Test-Path -LiteralPath $environmentFile)) {
     throw "Local environment file was not found at $environmentFile. Copy .env.example to .env and replace its placeholder secrets."
@@ -12,23 +13,13 @@ if (-not (Test-Path -LiteralPath $maven)) {
 }
 
 $docker = (Get-Command docker -ErrorAction Stop).Source
-$compose = $docker
-$composePrefix = @('compose')
-$originalErrorActionPreference = $ErrorActionPreference
-try {
-    $ErrorActionPreference = 'Continue'
-    & $docker compose version *> $null
-    $standardComposeAvailable = $LASTEXITCODE -eq 0
-} finally {
-    $ErrorActionPreference = $originalErrorActionPreference
-}
-if (-not $standardComposeAvailable) {
-    $dockerDesktopCompose = Join-Path (Split-Path (Split-Path $docker -Parent) -Parent) 'cli-plugins\docker-compose.exe'
-    if (-not (Test-Path -LiteralPath $dockerDesktopCompose)) {
-        throw 'Docker Compose was not found as a CLI plugin or Docker Desktop executable.'
-    }
+$dockerDesktopCompose = Join-Path (Split-Path (Split-Path $docker -Parent) -Parent) 'cli-plugins\docker-compose.exe'
+if (Test-Path -LiteralPath $dockerDesktopCompose) {
     $compose = $dockerDesktopCompose
     $composePrefix = @()
+} else {
+    $compose = $docker
+    $composePrefix = @('compose')
 }
 
 Get-Content $environmentFile | ForEach-Object {
@@ -50,6 +41,11 @@ if ($env:POSTGRES_ADMIN_PASSWORD -like 'replace-with-*' -or $env:KEYCLOAK_ADMIN_
 if ([string]::IsNullOrWhiteSpace($env:SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI)) {
     throw 'SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI must be set in .env.'
 }
+$postgresHostPort = if ([string]::IsNullOrWhiteSpace($env:POSTGRES_HOST_PORT)) { '5432' } else { $env:POSTGRES_HOST_PORT }
+$env:POSTGRES_HOST_PORT = $postgresHostPort
+Assert-GovernancePostgresPortConsistency `
+    -JdbcUrl $env:SPRING_DATASOURCE_URL `
+    -HostPort $postgresHostPort
 
 & $compose @composePrefix --project-directory $repositoryRoot up -d postgres keycloak
 if ($LASTEXITCODE -ne 0) {

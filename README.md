@@ -66,6 +66,14 @@ Run from the repository root:
 
 The script uses the checked-in Maven Wrapper rather than a machine-specific Maven installation. Its first run needs access to Maven Central. The control plane defaults to PostgreSQL; export the variables documented in [`.env.example`](.env.example) before running it outside the test profile. The test profile uses H2 only for automated tests.
 
+Run the real PostgreSQL V3-to-latest upgrade contract separately when Docker is available:
+
+```powershell
+.\scripts\test-postgres-upgrade.ps1
+```
+
+This command creates a uniquely named disposable Compose project on a free loopback port, verifies that V4 preserves a V3 fixture, and removes its container, network, and volume in `finally`. It does not read or modify the repository `.env` file.
+
 For local PostgreSQL and Keycloak dependencies, create a local `.env` from the documented variable names and run:
 
 ```powershell
@@ -81,6 +89,8 @@ For a local control-plane process after replacing the `.env` placeholders, run:
 ```powershell
 .\scripts\start-local.ps1
 ```
+
+`POSTGRES_HOST_PORT` must match the port in `SPRING_DATASOURCE_URL`; startup fails before Compose runs when they differ. The checked-in example uses `127.0.0.1` for Keycloak because Compose binds the service to the IPv4 loopback address.
 
 With the control plane running, verify the complete Keycloak-to-Spring JWT path without printing the token:
 
@@ -103,7 +113,7 @@ The root verifier retains the dependency-free Keycloak realm contract and also r
 
 ## Control Plane Security
 
-All control-plane API routes require a JWT except Kubernetes health probes. Keycloak realm roles are mapped from `realm_access.roles`; a local token may instead provide a flat `roles` claim. Role names are normalized to uppercase, with `-` converted to `_`. Every JWT must include a `department` claim, which scopes capability and release access.
+All control-plane API routes require a JWT except Kubernetes health probes. Keycloak realm roles are mapped from `realm_access.roles`; a local token may instead provide a flat `roles` claim. Role names are normalized to uppercase, with `-` converted to `_`. Every JWT must include nonblank `sub` and `department` claims: `sub` is the stable audit actor and `department` scopes capability and release access.
 
 | Role | Allowed operations |
 | --- | --- |

@@ -14,10 +14,14 @@ public class CurrentActor {
             throw new AccessDeniedException("An authenticated JWT is required");
         }
 
+        String subject = jwt.getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new AccessDeniedException("JWT subject claim is required");
+        }
         String department = jwt.getClaimAsString("department");
         if (department == null || department.isBlank()) {
             throw new AccessDeniedException("JWT department claim is required");
         }
-        return new Actor(jwt.getSubject(), department);
+        return new Actor(subject, department);
     }
 }
