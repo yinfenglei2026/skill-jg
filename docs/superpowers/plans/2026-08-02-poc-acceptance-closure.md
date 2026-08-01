@@ -18,7 +18,7 @@
 - Create: `apps/control-plane/src/test/java/com/example/governance/migration/PostgresqlMigrationTest.java`
 - Create: `scripts/test-postgres-upgrade.ps1`
 
-- [ ] **Step 1: Write the PostgreSQL-only failing migration test**
+- [x] **Step 1: Write the PostgreSQL-only failing migration test**
 
 Enable the JUnit test only when `POSTGRES_MIGRATION_TEST_URL` is set. Migrate to V3, insert a capability, release, and Skill dependency fixture, migrate to latest, then assert version V4, preserved fixture data, and a nullable `dependency_import_path`.
 
@@ -30,25 +30,25 @@ assertThat(result.targetSchemaVersion).isEqualTo("4");
 assertFixtureAndNullableImportPath(url, username, password);
 ```
 
-- [ ] **Step 2: Run the focused test without a URL**
+- [x] **Step 2: Run the focused test without a URL**
 
 Run `.\mvnw.cmd -B -pl apps/control-plane -Dtest=PostgresqlMigrationTest test`.
 Expected: build succeeds and the Docker-backed test is skipped.
 
-- [ ] **Step 3: Parameterize the PostgreSQL host port**
+- [x] **Step 3: Parameterize the PostgreSQL host port**
 
 Use `127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432` in `compose.yaml` and add `POSTGRES_HOST_PORT=5432` to `.env.example`. Keep container port 5432.
 
-- [ ] **Step 4: Implement the isolated PowerShell harness**
+- [x] **Step 4: Implement the isolated PowerShell harness**
 
 Create a unique `governance-upgrade-$PID` Compose project, select a free loopback port, set generated process-local credentials, start only PostgreSQL, wait for health, run the focused Maven test, and execute `down --volumes` in `finally`. Validate the exact project-name prefix before cleanup and never read or overwrite `.env`.
 
-- [ ] **Step 5: Run the live upgrade test**
+- [x] **Step 5: Run the live upgrade test**
 
 Run `.\scripts\test-postgres-upgrade.ps1`.
 Expected: PostgreSQL 16 becomes healthy, V1-V3 and then V4 apply, assertions pass, and the disposable container and volume are removed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Commit as `test: verify live postgres upgrades`.
 
@@ -207,4 +207,3 @@ Proceed only when migration, identity, Portal, and root gates pass and exception
 - [ ] **Step 2: Start the Harbor/Cosign design cycle**
 
 The next design covers Harbor authentication, registry failure semantics, Cosign signatures, provenance policy, trust roots, audit evidence, and negative tests. It remains outside this branch.
-

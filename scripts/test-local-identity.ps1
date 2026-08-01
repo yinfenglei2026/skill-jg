@@ -66,4 +66,35 @@ if ($realm.userProfile.attributes.name -notcontains 'department' -or
     throw 'Identity provisioning must converge the department profile and default client scopes.'
 }
 
+$repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+$composeDeclaration = Get-Content (Join-Path $repositoryRoot 'compose.yaml') -Raw
+$exampleEnvironment = Get-Content (Join-Path $repositoryRoot '.env.example') -Raw
+if ($composeDeclaration -notmatch [regex]::Escape('${POSTGRES_HOST_PORT:-5432}') -or
+    $exampleEnvironment -notmatch '(?m)^POSTGRES_HOST_PORT=5432$') {
+    throw 'Local PostgreSQL must expose a configurable host port with a documented default.'
+}
+
+$postgresUpgradeScriptPath = Join-Path $PSScriptRoot 'test-postgres-upgrade.ps1'
+if (-not (Test-Path -LiteralPath $postgresUpgradeScriptPath)) {
+    throw 'The disposable PostgreSQL upgrade verification script is missing.'
+}
+$postgresUpgradeScript = Get-Content $postgresUpgradeScriptPath -Raw
+if ($postgresUpgradeScript -notmatch 'governance-upgrade-\$PID' -or
+    $postgresUpgradeScript -notmatch '--project-name' -or
+    $postgresUpgradeScript -notmatch 'down.*--volumes' -or
+    $postgresUpgradeScript -match 'if \(\$started\)') {
+    throw 'PostgreSQL upgrade verification must isolate and clean its Compose project.'
+}
+
+$postgresInitScriptPath = Join-Path $repositoryRoot 'infra\local\postgres\init\01-create-databases.sh'
+$postgresInitBytes = [IO.File]::ReadAllBytes($postgresInitScriptPath)
+if ($postgresInitBytes -contains 13) {
+    throw 'Linux container initialization scripts must use LF line endings.'
+}
+$gitAttributesPath = Join-Path $repositoryRoot '.gitattributes'
+if (-not (Test-Path -LiteralPath $gitAttributesPath) -or
+    (Get-Content $gitAttributesPath -Raw) -notmatch '(?m)^\*\.sh text eol=lf$') {
+    throw 'Git attributes must preserve LF line endings for shell scripts.'
+}
+
 Write-Host 'Local identity helper tests passed.'
