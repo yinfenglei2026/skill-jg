@@ -2,22 +2,23 @@
 
 ## Decision
 
-**Overall status: PARTIAL.** The local governance control-plane baseline is repeatable for PostgreSQL migration, Keycloak JWT authentication, Portal component behavior, and static runtime declarations. A real digest-bound approval and audit persistence path was also exercised once. The full phase-one PoC is not accepted because the external supply-chain/runtime integrations and the Agent + MCP + Skill golden path are not implemented. Desktop/mobile browser evidence is also NOT RUN because the available browser was blocked by an admin policy check.
+**Overall status: PARTIAL.** The local governance control-plane baseline is repeatable for PostgreSQL migration, Keycloak JWT authentication, Portal component and real-browser behavior, and static runtime declarations. Real digest-bound approval, audit persistence, and browser publication paths were exercised. The full phase-one PoC is not accepted because the external supply-chain/runtime integrations and the Agent + MCP + Skill golden path are not implemented.
 
 This result authorizes continued engineering only. It is not a production-readiness or deployment approval.
 
 ## Run Evidence
 
-- Date: 2026-08-02, Asia/Shanghai
+- Date: 2026-08-06, Asia/Shanghai
 - Branch: `feat/poc-acceptance`
-- Evidence commit before this report: `fc52a9ed4c1d647990802248be98cb033d3068a0`
+- Evidence commit before this update: `0f84a6b0cd07ee11e213acab612a38bfad95c889`
 - Local toolchain: Java 17.0.19, Node 24.15.0, npm 11.12.1, Docker Engine 29.6.2, Docker Compose 5.3.1, kubectl 1.36.1
 - Components: Spring Boot 3.2.0, PostgreSQL 16.4, Keycloak 26.0.7, React 19.2.0, TypeScript 5.9.3, Vite 7.3.6, Vitest 4.1.8
 - `scripts/verify.ps1`: PASS; Java 125 tests with 1 conditional PostgreSQL test skipped, Keycloak realm 2 tests, Portal 25 tests, TypeScript, production Vite build, Kubernetes network contracts, Compose config, and realm JSON
 - `scripts/test-postgres-upgrade.ps1`: PASS; disposable PostgreSQL applied V1-V3, preserved the fixture through V4, accepted nullable Skill import paths, and removed its container/network/volume
-- `scripts/smoke-local-auth.ps1`: PASS against real Keycloak and Spring without printing a token
+- `scripts/smoke-local-auth.ps1`: PASS against real Keycloak and Spring; access-token and ID-token department/role claims matched without printing either token
 - Real approval API: PASS; `acceptance-agent:1.0.0` reached `APPROVED`, the 71-character SHA-256 digest was unchanged, and the audit actor equaled the JWT `sub`
-- Browser desktop/mobile: NOT RUN; external Chrome could not verify its admin-enforced policy for localhost and no in-app browser instance was available
+- Browser desktop/mobile: PASS in Chrome at 1440x900 and 390x844; APPROVER, OPERATOR, and READ_ONLY rendering matched role/state policy, OPERATOR published the digest-bound release from `APPROVED` to `PUBLISHED`, page-level overflow and clipping were absent, keyboard focus was visible, and sampled text contrast was at least 5.88:1
+- Browser-discovered identity fix: PASS; local provisioning now converges the Keycloak `realm roles` mapper into the ID token so the OIDC profile used by the Portal contains the same realm roles enforced from the access token by Spring
 - Hygiene: superseded clean worktree/branch `feat/task3-schema-contract-clean` removed after file/patch comparison; `stash@{0}` preserved
 
 Status meanings: PASS is repeatably demonstrated; PARTIAL has meaningful automated evidence but does not meet the full criterion; EXCEPTION is an acknowledged unimplemented control; NOT RUN has no execution evidence.
@@ -44,8 +45,8 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 | WEB-02 | PASS | Component tests prove the full digest is shown beside approval, success refreshes data, and 409 preserves detail with an alert. |
 | WEB-03 | EXCEPTION | Dependency locks are returned by the API but not rendered in the Portal. Consequence: reviewers cannot inspect Skill vs MCP dependencies visually. Next: add a typed dependency section. |
 | WEB-04 | EXCEPTION | Permission, secret-reference, and network diffs are not rendered. Consequence: approval context is incomplete. Next: add sanitized manifest-diff views. |
-| WEB-05 | PARTIAL | Component tests hide unauthorized controls and API tests return 403, but the required real browser path was NOT RUN. Consequence: role-aware browser rendering remains unverified. Next: rerun desktop/mobile role checks when browser policy access is available. |
-| WEB-06 | NOT RUN | No desktop/mobile viewport, keyboard, focus, or contrast execution evidence. Consequence: responsive/accessibility regressions remain possible. Next: run browser acceptance at agreed viewports. |
+| WEB-05 | PASS | Real Chrome sessions proved APPROVER has no action in `APPROVED`, OPERATOR receives `Publish`/`Revoke`, publication refreshes the release to `PUBLISHED` with `Deploy`/`Revoke`, and READ_ONLY receives no mutation region; API tests continue to prove direct unauthorized requests return 403. |
+| WEB-06 | PASS | Chrome at 1440x900 and 390x844 showed no page-level horizontal overflow, clipped control text, or visual overlap. The narrow release table scrolls within its own boundary, action controls remain inside the viewport, keyboard focus has a clearly visible outline, and sampled text contrast was at least 5.88:1. |
 | RUN-01 | PARTIAL | Control-plane/local adapters enforce exact approval and digest; no live admission controller or external reconciler exists. Consequence: a real cluster has no authoritative admission enforcement. Next: implement signed GitOps admission. |
 | RUN-02 | PARTIAL | Rendered examples use immutable images, resources, service accounts, probes, and gVisor; workloads were not started in K3s. Consequence: startup and health behavior are unproven. Next: execute the examples in the PoC cluster. |
 | RUN-03 | EXCEPTION | No live Agent-to-MCP/Skill invocation or undeclared dependency denial exists. Consequence: the core golden path is absent. Next: implement runtime dependency resolution and audit. |
@@ -69,8 +70,7 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 
 ## Ordered Next Work
 
-1. Restore an approved browser-control path and complete desktop/mobile role, mutation, overflow, keyboard, focus, and contrast evidence.
-2. Add CI secret scanning plus immutable build metadata/SBOM output.
-3. Design and implement Harbor authentication, Cosign signature/provenance policy, trust roots, audit evidence, and negative tests.
-4. Integrate external GitOps and K3s admission/reconciliation, then execute live network/RBAC/failure tests.
-5. Add Model Gateway, Agent + MCP + Skill invocation, observability, rollback, and the restricted read-only CLI.
+1. Add CI secret scanning plus immutable build metadata/SBOM output.
+2. Design and implement Harbor authentication, Cosign signature/provenance policy, trust roots, audit evidence, and negative tests.
+3. Integrate external GitOps and K3s admission/reconciliation, then execute live network/RBAC/failure tests.
+4. Add Model Gateway, Agent + MCP + Skill invocation, observability, rollback, and the restricted read-only CLI.

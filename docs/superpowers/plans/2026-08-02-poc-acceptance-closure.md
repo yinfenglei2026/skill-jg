@@ -160,11 +160,11 @@ Use non-placeholder local passwords and matching host/JDBC ports. Start PostgreS
 
 Run `scripts/smoke-local-auth.ps1`. Expected: Keycloak JWT claims match and the catalog API returns 200 without printing the token.
 
-- [ ] **Step 6: Run desktop and mobile browser checks**
+- [x] **Step 6: Run desktop and mobile browser checks**
 
 At desktop and mobile viewports, sign in as a synthetic role user, select a release, perform one permitted mutation, verify unauthorized controls remain absent, and inspect for overflow or overlap. Screenshots must contain no secrets.
 
-Blocked on 2026-08-02: the external browser rejected localhost access because its admin-enforced policy could not be verified, and no in-app browser instance was available. The real approver JWT/API mutation and audit binding passed; viewport evidence remains NOT RUN.
+Completed on 2026-08-06 after Chrome policy access was restored. Chrome sessions at 1440x900 and 390x844 covered APPROVER, OPERATOR, and READ_ONLY behavior, one real `APPROVED` to `PUBLISHED` mutation, page and table overflow, action layout, keyboard focus, and sampled contrast. The run found and fixed a local Keycloak mapper gap that omitted realm roles from the Portal ID-token profile while retaining them in the server access token.
 
 - [x] **Step 7: Document commands and commit**
 
@@ -206,7 +206,7 @@ Confirm no secret or production-readiness claim is present. Commit as `docs: rec
 
 Proceed only when migration, identity, Portal, and root gates pass and exceptions are accurately recorded.
 
-Decision: PARTIAL. Local migration, identity, API, Portal component, and root gates pass, and exceptions are recorded. Full PoC acceptance remains blocked by browser viewport evidence and the external golden path.
+Decision: PARTIAL. Local migration, identity, API, Portal component, real-browser, and root gates pass, and exceptions are recorded. Full PoC acceptance remains blocked by the external supply-chain/runtime integrations and golden path.
 
 - [ ] **Step 2: Start the Harbor/Cosign design cycle**
 

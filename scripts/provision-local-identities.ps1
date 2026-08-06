@@ -130,6 +130,29 @@ function Ensure-LocalClientDefaultScopes {
     }
 }
 
+function Set-LocalRealmRolesIdTokenClaim {
+    $rolesScope = Ensure-LocalClientScope -ScopeName 'roles'
+    $mappers = @(Invoke-Kcadm -KcadmArguments @(
+        'get', "client-scopes/$($rolesScope.id)/protocol-mappers/models", '-r', 'governance'
+    ) -AsJson)
+    $realmRolesMapper = @($mappers | Where-Object name -eq 'realm roles')[0]
+    if ($null -eq $realmRolesMapper) {
+        throw 'Keycloak realm roles mapper was not found.'
+    }
+    if ($realmRolesMapper.config.'id.token.claim' -ne 'true') {
+        $realmRolesMapper.config | Add-Member `
+            -NotePropertyName 'id.token.claim' `
+            -NotePropertyValue 'true' `
+            -Force
+        $mapperBody = $realmRolesMapper | ConvertTo-Json -Compress -Depth 8
+        Invoke-Kcadm -KcadmArguments @(
+            'update',
+            "client-scopes/$($rolesScope.id)/protocol-mappers/models/$($realmRolesMapper.id)",
+            '-r', 'governance', '-f', '-'
+        ) -StandardInput $mapperBody | Out-Null
+    }
+}
+
 function Set-LocalClient {
     param(
         [Parameter(Mandatory)][string]$ClientId,
@@ -161,6 +184,7 @@ Set-LocalClient -ClientId 'governance-smoke' -StandardFlowEnabled $false -Direct
 Set-DepartmentUserProfile
 Ensure-LocalClientDefaultScopes -ClientId 'governance-portal'
 Ensure-LocalClientDefaultScopes -ClientId 'governance-smoke'
+Set-LocalRealmRolesIdTokenClaim
 
 $governanceRoles = @('owner', 'reviewer', 'approver', 'operator', 'read-only')
 foreach ($identity in Get-GovernanceSyntheticIdentities) {

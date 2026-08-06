@@ -105,6 +105,18 @@ if ($realm.PSObject.Properties.Name -contains 'userProfile' -or
     $provisioningScript -notmatch "@\('basic', 'profile', 'email', 'roles', 'governance-department'\)") {
     throw 'Realm import must remain Keycloak-compatible while provisioning converges profiles and scopes.'
 }
+if ($provisioningScript -notmatch 'realm roles' -or
+    $provisioningScript -notmatch "-NotePropertyName 'id.token.claim'" -or
+    $provisioningScript -notmatch "-NotePropertyValue 'true'") {
+    throw 'Identity provisioning must expose realm roles in the Portal ID token profile.'
+}
+
+$authenticationSmokeScript = Get-Content (Join-Path $PSScriptRoot 'smoke-local-auth.ps1') -Raw
+if ($authenticationSmokeScript -notmatch "scope = 'openid'" -or
+    $authenticationSmokeScript -notmatch '\$tokenResponse\.id_token' -or
+    $authenticationSmokeScript -notmatch 'Assert-GovernanceJwtClaims -Claims \$idTokenClaims') {
+    throw 'Authentication smoke must verify the Portal role claims returned in the ID token.'
+}
 
 $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $composeDeclaration = Get-Content (Join-Path $repositoryRoot 'compose.yaml') -Raw

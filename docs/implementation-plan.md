@@ -139,4 +139,4 @@ Each slice should include API contract tests, audit assertions and failure behav
 
 The PoC may be accepted when all `FND`, `API`, `WEB`, `RUN`, `INF` and `VER` criteria are either demonstrated or recorded as an explicit exception with owner and consequence, and the Agent + MCP golden path is repeatable. Acceptance authorizes the next engineering phase only; it is not a production deployment approval.
 
-The 2026-08-02 baseline is recorded in [`docs/poc-acceptance-report.md`](poc-acceptance-report.md). Its decision is **PARTIAL**: the local governance control plane is repeatable, but browser viewport evidence and the external Agent + MCP + Skill golden path remain open.
+The baseline, updated with real Chrome evidence on 2026-08-06, is recorded in [`docs/poc-acceptance-report.md`](poc-acceptance-report.md). Its decision is **PARTIAL**: the local governance control plane and browser role/responsive path are repeatable, but the external supply-chain/runtime integrations and Agent + MCP + Skill golden path remain open.

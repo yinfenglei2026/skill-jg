@@ -23,6 +23,7 @@ $tokenResponse = Invoke-RestMethod -Method Post -Uri "$($Issuer.TrimEnd('/'))/pr
     -Body @{
         client_id = 'governance-smoke'
         grant_type = 'password'
+        scope = 'openid'
         username = $Username
         password = $Password
     }
@@ -32,6 +33,11 @@ if ([string]::IsNullOrWhiteSpace($tokenResponse.access_token)) {
 
 $claims = Get-JwtPayload -AccessToken $tokenResponse.access_token
 Assert-GovernanceJwtClaims -Claims $claims -ExpectedDepartment $ExpectedDepartment -ExpectedRole $ExpectedRole
+if ([string]::IsNullOrWhiteSpace($tokenResponse.id_token)) {
+    throw 'Local Keycloak did not return an ID token.'
+}
+$idTokenClaims = Get-JwtPayload -AccessToken $tokenResponse.id_token
+Assert-GovernanceJwtClaims -Claims $idTokenClaims -ExpectedDepartment $ExpectedDepartment -ExpectedRole $ExpectedRole
 
 $headers = @{ Authorization = "Bearer $($tokenResponse.access_token)"; Accept = 'application/json' }
 $response = Invoke-WebRequest -UseBasicParsing -Method Get -Uri "$($ApiBaseUrl.TrimEnd('/'))/capabilities" -Headers $headers
