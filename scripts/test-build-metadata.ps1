@@ -23,7 +23,7 @@ function Get-PortalTreeSha256 {
 
     $entries = foreach ($file in Get-ChildItem -LiteralPath $PortalDistPath -File -Recurse) {
         $relativePath = $file.FullName.Substring($PortalDistPath.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar).Replace('\', '/')
-        "{0}`n{1}`n{2}`n" -f $relativePath, (Get-FileSha256 -Path $file.FullName), $file.Length
+        "{0}{1}{2}`n" -f $relativePath, [char]0, (Get-FileSha256 -Path $file.FullName)
     }
     $canonicalTree = (($entries | Sort-Object) -join '')
     $sha256 = [Security.Cryptography.SHA256]::Create()
@@ -54,6 +54,21 @@ function Assert-ArtifactMetadata {
     }
 }
 
+function Get-ArtifactMetadata {
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$Artifacts,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $matches = @($Artifacts | Where-Object name -eq $Name)
+    if ($matches.Count -ne 1) {
+        throw "Build metadata must contain exactly one '$Name' artifact."
+    }
+    return $matches[0]
+}
+
 $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $writerPath = Join-Path $PSScriptRoot 'write-build-metadata.ps1'
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) "build-metadata-contract-$PID-$([Guid]::NewGuid().ToString('N'))"
@@ -64,9 +79,11 @@ try {
     New-Item -ItemType Directory -Path $portalAssetsPath -Force | Out-Null
 
     $jarPath = Join-Path $fixtureRoot 'control-plane.jar'
-    $sbomPath = Join-Path $fixtureRoot 'control-plane.cdx.json'
+    $controlPlaneSbomPath = Join-Path $fixtureRoot 'control-plane.cdx.json'
+    $portalSbomPath = Join-Path $fixtureRoot 'portal.cdx.json'
     [IO.File]::WriteAllBytes($jarPath, [byte[]](0x50, 0x4b, 0x03, 0x04, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x61, 0x63, 0x74))
-    [IO.File]::WriteAllText($sbomPath, '{"bomFormat":"CycloneDX","specVersion":"1.6"}', [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText($controlPlaneSbomPath, '{"bomFormat":"CycloneDX","specVersion":"1.6"}', [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText($portalSbomPath, '{"bomFormat":"CycloneDX","specVersion":"1.6","components":[]}', [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $portalDistPath 'index.html'), '<main>portal contract</main>', [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $portalAssetsPath 'app.js'), 'console.log("portal contract");', [Text.UTF8Encoding]::new($false))
 
@@ -80,13 +97,15 @@ try {
     & $writerPath `
         -CommitSha $commitSha `
         -JarPath $jarPath `
-        -SbomPath $sbomPath `
+        -ControlPlaneSbomPath $controlPlaneSbomPath `
+        -PortalSbomPath $portalSbomPath `
         -PortalDistPath $portalDistPath `
         -OutputPath $firstOutputPath
     & $writerPath `
         -CommitSha $commitSha `
         -JarPath $jarPath `
-        -SbomPath $sbomPath `
+        -ControlPlaneSbomPath $controlPlaneSbomPath `
+        -PortalSbomPath $portalSbomPath `
         -PortalDistPath $portalDistPath `
         -OutputPath $secondOutputPath
 
@@ -103,10 +122,12 @@ try {
     if ($metadata.commitSha -notmatch '^[0-9a-f]{40}$' -or $metadata.commitSha -ne $commitSha) {
         throw 'Build metadata must include the validated 40-character commit SHA.'
     }
-    Assert-ArtifactMetadata -Artifact $metadata.artifacts.controlPlaneJar -Name 'Control-plane JAR metadata' -Path $jarPath
-    Assert-ArtifactMetadata -Artifact $metadata.artifacts.controlPlaneSbom -Name 'Control-plane SBOM metadata' -Path $sbomPath
+    $artifacts = @($metadata.artifacts)
+    Assert-ArtifactMetadata -Artifact (Get-ArtifactMetadata -Artifacts $artifacts -Name 'control-plane-jar') -Name 'Control-plane JAR metadata' -Path $jarPath
+    Assert-ArtifactMetadata -Artifact (Get-ArtifactMetadata -Artifacts $artifacts -Name 'control-plane-sbom') -Name 'Control-plane SBOM metadata' -Path $controlPlaneSbomPath
+    Assert-ArtifactMetadata -Artifact (Get-ArtifactMetadata -Artifacts $artifacts -Name 'portal-sbom') -Name 'Portal SBOM metadata' -Path $portalSbomPath
 
-    $portalMetadata = $metadata.artifacts.portalDist
+    $portalMetadata = Get-ArtifactMetadata -Artifacts $artifacts -Name 'portal-dist'
     $expectedPortalBytes = @(Get-ChildItem -LiteralPath $portalDistPath -File -Recurse | ForEach-Object Length | Measure-Object -Sum).Sum
     $expectedTreeSha256 = Get-PortalTreeSha256 -PortalDistPath $portalDistPath
     if ($null -eq $portalMetadata -or $portalMetadata.bytes -ne $expectedPortalBytes) {
@@ -121,7 +142,8 @@ try {
         & $writerPath `
             -CommitSha $commitSha `
             -JarPath (Join-Path $fixtureRoot 'missing.jar') `
-            -SbomPath $sbomPath `
+            -ControlPlaneSbomPath $controlPlaneSbomPath `
+            -PortalSbomPath $portalSbomPath `
             -PortalDistPath $portalDistPath `
             -OutputPath (Join-Path $fixtureRoot 'missing-artifact-metadata.json')
     } catch {

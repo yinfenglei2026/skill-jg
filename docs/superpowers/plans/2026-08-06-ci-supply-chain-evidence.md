@@ -22,7 +22,7 @@ Create a temporary fixture with a JAR file, two SBOM JSON files, and a nested Po
 
 - [ ] **Step 2: Run the metadata contract test to verify it fails**
 
-Run `pwsh -NoProfile -File scripts/test-build-metadata.ps1`.
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-build-metadata.ps1`.
 Expected: FAIL because `scripts/write-build-metadata.ps1` does not exist.
 
 - [ ] **Step 3: Write the failing CI contract test**
@@ -31,7 +31,7 @@ Read `.github/workflows/ci.yml` and assert it contains `fetch-depth: 0`, a pinne
 
 - [ ] **Step 4: Run the CI contract test to verify it fails**
 
-Run `pwsh -NoProfile -File scripts/test-ci-supply-chain.ps1`.
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-ci-supply-chain.ps1`.
 Expected: FAIL because the existing workflow has none of the new evidence steps.
 
 - [ ] **Step 5: Commit the red tests**
@@ -59,7 +59,7 @@ Emit schema version `1`, source fields, tools, and an artifact array containing 
 
 - [ ] **Step 3: Run the metadata contract test to verify it passes**
 
-Run `pwsh -NoProfile -File scripts/test-build-metadata.ps1`.
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-build-metadata.ps1`.
 Expected: `Build metadata tests passed.`
 
 - [ ] **Step 4: Commit the implementation**
@@ -119,7 +119,7 @@ Change checkout to full history. Add a redacted Gitleaks step producing `artifac
 
 - [ ] **Step 4: Run the CI contract test to verify it passes**
 
-Run `pwsh -NoProfile -File scripts/test-ci-supply-chain.ps1`.
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-ci-supply-chain.ps1`.
 Expected: `CI supply-chain contract tests passed.`
 
 - [ ] **Step 5: Run Gitleaks locally**
