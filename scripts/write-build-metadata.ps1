@@ -104,15 +104,25 @@ function New-PortalTreeArtifact {
     )
 
     $fullPath = (Resolve-Path -LiteralPath $Path).Path
-    $entries = foreach ($file in Get-ChildItem -LiteralPath $fullPath -File -Recurse) {
+    $entries = @(
+        foreach ($file in Get-ChildItem -LiteralPath $fullPath -File -Recurse) {
         $relativePath = $file.FullName.Substring($fullPath.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar).Replace('\', '/')
         [pscustomobject]@{
             relativePath = $relativePath
             sha256 = Get-FileSha256 -Path $file.FullName
             bytes = [int64]$file.Length
         }
+        }
+    )
+    $orderedEntries = [System.Collections.Generic.List[object]]::new()
+    foreach ($entry in $entries) {
+        [void]$orderedEntries.Add($entry)
     }
-    $canonicalTree = (($entries | Sort-Object relativePath | ForEach-Object { "{0}{1}{2}`n" -f $_.relativePath, [char]0, $_.sha256 }) -join '')
+    $orderedEntries.Sort([System.Comparison[object]]{
+            param($left, $right)
+            [String]::Compare($left.relativePath, $right.relativePath, [StringComparison]::Ordinal)
+        })
+    $canonicalTree = (($orderedEntries | ForEach-Object { "{0}{1}{2}`n" -f $_.relativePath, [char]0, $_.sha256 }) -join '')
     $treeSha256 = [Security.Cryptography.SHA256]::Create()
     try {
         $treeHash = $treeSha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonicalTree))
@@ -127,7 +137,7 @@ function New-PortalTreeArtifact {
     }
 }
 
-if ($CommitSha -notmatch '^[0-9a-f]{40}$') {
+if ($CommitSha -cnotmatch '^[0-9a-f]{40}$') {
     throw 'CommitSha must be a 40-character lowercase hexadecimal SHA.'
 }
 if ($SourceDateEpoch -lt 0) {

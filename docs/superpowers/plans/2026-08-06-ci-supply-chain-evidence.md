@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing single `verify` job as the build source of truth. Run Gitleaks before the existing checks, generate the Maven SBOM from a pinned CycloneDX plugin and the Portal SBOM from a pinned CycloneDX npm CLI, then write a machine-readable metadata file containing source identity and hashes. Upload all evidence with `actions/upload-artifact` and fail after upload if the scanner found a non-allowlisted secret.
 
-**Tech Stack:** GitHub Actions, PowerShell 7, Maven, CycloneDX Maven Plugin 2.9.2, CycloneDX npm 4.2.1, Gitleaks 8.30.1, SHA-256.
+**Tech Stack:** GitHub Actions, PowerShell 7, Maven, CycloneDX Maven Plugin 2.9.2, CycloneDX npm 4.2.1, Gitleaks 8.29.1, SHA-256.
 
 ---
 
@@ -83,7 +83,7 @@ Configure `org.cyclonedx:cyclonedx-maven-plugin:2.9.2` with `makeAggregateBom` b
 
 - [ ] **Step 2: Add the pinned npm command contract**
 
-The workflow contract must require `npx --yes @cyclonedx/cyclonedx-npm@4.2.1 --package-lock-only --output-format JSON --output-reproducible --validate` and an output path under `artifacts/sbom/portal-bom.json`.
+The workflow contract must require `@cyclonedx/cyclonedx-npm` as a locked `4.2.1` Portal development dependency and call `node node_modules/@cyclonedx/cyclonedx-npm/bin/cyclonedx-npm-cli.js --package-lock-only --output-format JSON --output-reproducible --validate` with an output path under `artifacts/sbom/portal-bom.json`.
 
 - [ ] **Step 3: Run Maven and npm SBOM generation locally**
 
@@ -107,7 +107,7 @@ git commit -m "feat: generate cyclonedx dependency sboms"
 
 - [ ] **Step 1: Pin and verify Gitleaks**
 
-Use Gitleaks `8.30.1` Linux x64 release with the official SHA-256 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`. Download it from the release URL, verify with `sha256sum -c`, and invoke the extracted binary with `gitleaks git --redact --config .gitleaks.toml`.
+Use Gitleaks `8.29.1` Linux x64 release. Download the release asset and its official checksums file, extract the exact checksum for that fixed asset name, verify with `sha256sum --check`, and invoke the extracted binary with `gitleaks git --redact --config .gitleaks.toml`.
 
 - [ ] **Step 2: Add the narrow synthetic-value policy**
 
@@ -124,7 +124,7 @@ Expected: `CI supply-chain contract tests passed.`
 
 - [ ] **Step 5: Run Gitleaks locally**
 
-Download the pinned Windows x64 release and its official `gitleaks_8.30.1_checksums.txt` file. Extract the exact checksum line for `gitleaks_8.30.1_windows_x64.zip`, compare it to `Get-FileHash -Algorithm SHA256`, then run `gitleaks dir --redact --config .gitleaks.toml .` against the repository. Expected: no findings and exit code `0`.
+Download the pinned Windows x64 release and its official `gitleaks_8.29.1_checksums.txt` file. Extract the exact checksum line for `gitleaks_8.29.1_windows_x64.zip`, compare it to `Get-FileHash -Algorithm SHA256`, then run `gitleaks dir --redact --config .gitleaks.toml .` against the repository. Expected: no findings and exit code `0`.
 
 - [ ] **Step 6: Commit the workflow**
 

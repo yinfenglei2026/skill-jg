@@ -21,11 +21,13 @@ function Get-PortalTreeSha256 {
         [string]$PortalDistPath
     )
 
-    $entries = foreach ($file in Get-ChildItem -LiteralPath $PortalDistPath -File -Recurse) {
+    $entries = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in Get-ChildItem -LiteralPath $PortalDistPath -File -Recurse) {
         $relativePath = $file.FullName.Substring($PortalDistPath.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar).Replace('\', '/')
-        "{0}{1}{2}`n" -f $relativePath, [char]0, (Get-FileSha256 -Path $file.FullName)
+        [void]$entries.Add(("{0}{1}{2}`n" -f $relativePath, [char]0, (Get-FileSha256 -Path $file.FullName)))
     }
-    $canonicalTree = (($entries | Sort-Object) -join '')
+    $entries.Sort([StringComparer]::Ordinal)
+    $canonicalTree = ($entries -join '')
     $sha256 = [Security.Cryptography.SHA256]::Create()
     try {
         $hash = $sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonicalTree))
@@ -86,6 +88,8 @@ try {
     [IO.File]::WriteAllText($portalSbomPath, '{"bomFormat":"CycloneDX","specVersion":"1.6","components":[]}', [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $portalDistPath 'index.html'), '<main>portal contract</main>', [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $portalAssetsPath 'app.js'), 'console.log("portal contract");', [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $portalAssetsPath 'Z.js'), 'console.log("uppercase contract");', [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $portalAssetsPath 'a.js'), 'console.log("lowercase contract");', [Text.UTF8Encoding]::new($false))
 
     if (-not (Test-Path -LiteralPath $writerPath)) {
         throw 'Build metadata writer is missing: scripts/write-build-metadata.ps1'
@@ -151,6 +155,24 @@ try {
     }
     if ([string]::IsNullOrWhiteSpace($missingArtifactError)) {
         throw 'Build metadata writer must fail when an input artifact is missing.'
+    }
+
+    foreach ($invalidCommitSha in @('', '0123456789ABCDEF0123456789ABCDEF01234567')) {
+        $invalidCommitError = $null
+        try {
+            & $writerPath `
+                -CommitSha $invalidCommitSha `
+                -JarPath $jarPath `
+                -ControlPlaneSbomPath $controlPlaneSbomPath `
+                -PortalSbomPath $portalSbomPath `
+                -PortalDistPath $portalDistPath `
+                -OutputPath (Join-Path $fixtureRoot 'invalid-commit-metadata.json')
+        } catch {
+            $invalidCommitError = $_.Exception.Message
+        }
+        if ([string]::IsNullOrWhiteSpace($invalidCommitError)) {
+            throw 'Build metadata writer must reject empty, uppercase, or malformed commit SHA inputs.'
+        }
     }
 
     Write-Host 'Build metadata contract tests passed.'

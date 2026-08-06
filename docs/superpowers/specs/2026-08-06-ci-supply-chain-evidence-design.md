@@ -12,7 +12,7 @@ This slice is limited to CI evidence. Harbor authentication, OCI publishing, Cos
 
 ## Architecture
 
-The existing `verify` workflow remains the source of build truth. A parallel `secret-scan` job checks the complete Git history with the official Gitleaks CLI downloaded at a pinned release and verified with its published SHA-256. The existing build job then generates two CycloneDX JSON SBOMs, records deterministic build metadata, and uploads one immutable evidence artifact.
+The existing `verify` workflow remains the source of build truth. The job checks the complete Git history with the official Gitleaks CLI at pinned release `8.29.1`, verifying the downloaded Linux asset against that release's published checksums file. The existing build job then generates two CycloneDX JSON SBOMs, records deterministic build metadata, and uploads one immutable evidence artifact.
 
 The scan has no access to repository secrets and writes only redacted reports. Synthetic values already required by local Compose and test fixtures are allowed only through narrowly scoped, documented Gitleaks rules; no directory-wide ignore is permitted. Any finding outside those exact fixtures fails the job.
 
@@ -57,10 +57,10 @@ The artifact list includes the control-plane JAR, the Portal `dist` tree digest,
 
 ## Workflow Data Flow
 
-1. `actions/checkout` uses `fetch-depth: 0` in `secret-scan` so findings cover history, not only the tip commit.
-2. `secret-scan` downloads the Linux x64 Gitleaks release, verifies the published checksum, runs `gitleaks git` with redaction, and writes SARIF plus JSON reports. The job exits nonzero for any non-allowlisted finding.
+1. `actions/checkout` uses `fetch-depth: 0` in the `verify` job so findings cover history, not only the tip commit.
+2. The `verify` job's `secret-scan` step downloads the Linux x64 Gitleaks release, verifies the published checksum, runs `gitleaks git` with redaction, and writes SARIF plus JSON reports. The job exits nonzero for any non-allowlisted finding.
 3. `verify` runs the current Maven, Portal, runtime policy, Compose and realm checks exactly as today.
-4. After successful builds, a pinned CycloneDX Maven invocation writes `control-plane-bom.json`; a pinned CycloneDX npm invocation reads `apps/portal/package-lock.json` and writes `portal-bom.json` with reproducible output.
+4. After successful builds, a pinned CycloneDX Maven invocation writes `control-plane-bom.json`; the locked `@cyclonedx/cyclonedx-npm` development dependency reads `apps/portal/package-lock.json` and writes `portal-bom.json` with reproducible output.
 5. `write-build-metadata.ps1` validates the commit SHA and hashes the JAR, Portal dist tree, and SBOM files in stable path order.
 6. A final upload step uses `if-no-files-found: error`, a SHA-addressed artifact name, and retains the evidence for the existing CI retention policy.
 

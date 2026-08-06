@@ -31,9 +31,9 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 | --- | --- | --- |
 | FND-01 | PARTIAL | README documents prerequisites and the root verifier exercises the installed tools, but it does not enforce Java 17 or Node 24 versions. Consequence: an unsupported version can reach later failures. Next: add explicit version gates. |
 | FND-02 | PASS | One root command ran server, Portal, identity, manifest, Compose, and Kubernetes static checks. |
-| FND-03 | PARTIAL | CI uses Maven/npm locks and synthetic secrets, but does not emit commit/SBOM artifact metadata. Consequence: build provenance is incomplete. Next: add immutable CI metadata and SBOM output. |
+| FND-03 | PARTIAL | CI now generates locked Java/Node CycloneDX SBOMs and deterministic commit/build metadata, then uploads a SHA-addressed immutable evidence artifact. Local contract and generator checks pass, but this branch has not yet completed a remote GitHub Actions run. Consequence: hosted artifact retention/digest evidence remains unobserved. Next: run CI on this branch and record the artifact digest. |
 | FND-04 | PASS | Architecture, schema, release states, digest rules, and PoC limitations are checked in and cross-referenced. |
-| FND-05 | PARTIAL | Secret-like local files are ignored, but CI has no dedicated secret scanner. Consequence: committed credentials rely on review. Next: add a scanner with explicit synthetic-fixture policy. |
+| FND-05 | PARTIAL | CI now performs a full-history, redacted Gitleaks scan with a narrow exact-value synthetic-fixture policy; the workflow and policy are contract-tested. The local environment could not reach the release download endpoint, so its first hosted scan remains unobserved. Consequence: scanner execution evidence is pending. Next: run CI on this branch and inspect the redacted reports. |
 | API-01 | PASS | Parser/API tests cover Agent/MCP `v1alpha1`, strict fields, stable typed errors, and OCI artifact contracts. |
 | API-02 | PASS | Dependency locks, missing/mismatched dependencies, Skill import paths, and capability cycles are tested. |
 | API-03 | PASS | Approval is bound to the canonical candidate digest and is not inherited across releases. |
@@ -70,7 +70,7 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 
 ## Ordered Next Work
 
-1. Add CI secret scanning plus immutable build metadata/SBOM output.
+1. Run the configured CI evidence workflow on this branch and record its immutable artifact digest and redacted scan reports.
 2. Design and implement Harbor authentication, Cosign signature/provenance policy, trust roots, audit evidence, and negative tests.
 3. Integrate external GitOps and K3s admission/reconciliation, then execute live network/RBAC/failure tests.
 4. Add Model Gateway, Agent + MCP + Skill invocation, observability, rollback, and the restricted read-only CLI.

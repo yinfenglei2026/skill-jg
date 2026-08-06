@@ -122,12 +122,12 @@ $repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $composeDeclaration = Get-Content (Join-Path $repositoryRoot 'compose.yaml') -Raw
 $exampleEnvironment = Get-Content (Join-Path $repositoryRoot '.env.example') -Raw
 if ($composeDeclaration -notmatch [regex]::Escape('${POSTGRES_HOST_PORT:-5432}') -or
-    $exampleEnvironment -notmatch '(?m)^POSTGRES_HOST_PORT=5432$' -or
-    $exampleEnvironment -notmatch '(?m)^SPRING_PROFILES_ACTIVE=local$') {
+    $exampleEnvironment -notmatch '(?m)^POSTGRES_HOST_PORT=5432\r?$' -or
+    $exampleEnvironment -notmatch '(?m)^SPRING_PROFILES_ACTIVE=local\r?$') {
     throw 'Local PostgreSQL must expose a configurable host port with a documented default.'
 }
-if ($exampleEnvironment -notmatch '(?m)^VITE_GOVERNANCE_OIDC_AUTHORITY=http://127\.0\.0\.1:8081/realms/governance$' -or
-    $exampleEnvironment -notmatch '(?m)^SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://127\.0\.0\.1:8081/realms/governance$') {
+if ($exampleEnvironment -notmatch '(?m)^VITE_GOVERNANCE_OIDC_AUTHORITY=http://127\.0\.0\.1:8081/realms/governance\r?$' -or
+    $exampleEnvironment -notmatch '(?m)^SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://127\.0\.0\.1:8081/realms/governance\r?$') {
     throw 'Local Keycloak URLs must use the IPv4 loopback address bound by Compose.'
 }
 
@@ -158,7 +158,7 @@ if ($postgresInitBytes -contains 13) {
 }
 $gitAttributesPath = Join-Path $repositoryRoot '.gitattributes'
 if (-not (Test-Path -LiteralPath $gitAttributesPath) -or
-    (Get-Content $gitAttributesPath -Raw) -notmatch '(?m)^\*\.sh text eol=lf$') {
+    (Get-Content $gitAttributesPath -Raw) -notmatch '(?m)^\*\.sh text eol=lf\r?$') {
     throw 'Git attributes must preserve LF line endings for shell scripts.'
 }
 

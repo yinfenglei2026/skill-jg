@@ -4,11 +4,16 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -18,14 +23,82 @@ jobs:
         with:
           node-version: '24'
       - uses: azure/setup-kubectl@v4
-      - name: Verify control plane
+      - name: Install and verify Gitleaks
+        shell: bash
+        run: |
+          GITLEAKS_VERSION=8.29.1
+          GITLEAKS_ARCHIVE="/tmp/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          GITLEAKS_CHECKSUMS="/tmp/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          curl --fail --location --silent --show-error --output "$GITLEAKS_ARCHIVE" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --location --silent --show-error --output "$GITLEAKS_CHECKSUMS" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          GITLEAKS_SHA256=$(grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$" "$GITLEAKS_CHECKSUMS" | awk '{ print $1 }')
+          test -n "$GITLEAKS_SHA256"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$GITLEAKS_ARCHIVE" | sha256sum --check --status
+          tar --extract --gzip --file "$GITLEAKS_ARCHIVE" --directory /tmp
+          GITLEAKS_BIN="/tmp/gitleaks"
+          "$GITLEAKS_BIN" version
+          echo "GITLEAKS_BIN=$GITLEAKS_BIN" >> "$GITHUB_ENV"
+      - name: Scan full Git history for secrets
+        id: gitleaks
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir --parents artifacts/secret-scan
+          set +e
+          "$GITLEAKS_BIN" git --redact --config .gitleaks.toml --report-format sarif --report-path artifacts/secret-scan/gitleaks.sarif --exit-code 1 .
+          sarif_status=$?
+          "$GITLEAKS_BIN" git --redact --config .gitleaks.toml --report-format json --report-path artifacts/secret-scan/gitleaks.json --exit-code 1 .
+          json_status=$?
+          if [ "$sarif_status" -ne 0 ] || [ "$json_status" -ne 0 ]; then
+            exit 1
+          fi
+      - name: Verify control plane and generate CycloneDX Maven SBOM
         run: ./mvnw -B -pl apps/control-plane verify
-      - name: Verify portal
+      - name: Verify Maven SBOM output
+        shell: pwsh
+        run: |
+          $sbom = Get-Content apps/control-plane/target/sbom/control-plane-bom.json -Raw | ConvertFrom-Json
+          if ($sbom.bomFormat -ne 'CycloneDX' -or $sbom.specVersion -ne '1.6' -or @($sbom.components).Count -lt 1) {
+            throw 'CycloneDX Maven SBOM is invalid or empty.'
+          }
+      - name: Verify portal and generate CycloneDX npm SBOM
         working-directory: apps/portal
         run: |
           npm ci
           npm test
           npm run build
+          mkdir --parents ../../artifacts/sbom
+          node node_modules/@cyclonedx/cyclonedx-npm/bin/cyclonedx-npm-cli.js --package-lock-only --output-format JSON --output-reproducible --validate --output-file ../../artifacts/sbom/portal-bom.json
+      - name: Verify npm SBOM output
+        shell: pwsh
+        run: |
+          $sbom = Get-Content artifacts/sbom/portal-bom.json -Raw | ConvertFrom-Json
+          if ($sbom.bomFormat -ne 'CycloneDX' -or $sbom.specVersion -ne '1.6' -or @($sbom.components).Count -lt 1) {
+            throw 'CycloneDX npm SBOM is invalid or empty.'
+          }
+      - name: Write build metadata
+        shell: pwsh
+        run: |
+          $sourceDateEpoch = [long](& git show -s --format=%ct $env:GITHUB_SHA)
+          $javaVersion = (& java -version 2>&1 | Select-Object -First 1).ToString()
+          $mavenVersion = (& ./mvnw -version | Select-Object -First 1).ToString()
+          $nodeVersion = (& node --version).ToString()
+          $npmVersion = (& npm --version).ToString()
+          ./scripts/write-build-metadata.ps1 `
+            -CommitSha $env:GITHUB_SHA `
+            -JarPath apps/control-plane/target/control-plane-0.1.0-SNAPSHOT.jar `
+            -ControlPlaneSbomPath apps/control-plane/target/sbom/control-plane-bom.json `
+            -PortalSbomPath artifacts/sbom/portal-bom.json `
+            -PortalDistPath apps/portal/dist `
+            -OutputPath artifacts/build-metadata.json `
+            -Ref $env:GITHUB_REF `
+            -Workflow $env:GITHUB_WORKFLOW `
+            -RunId $env:GITHUB_RUN_ID `
+            -SourceDateEpoch $sourceDateEpoch `
+            -JavaVersion $javaVersion `
+            -MavenVersion $mavenVersion `
+            -NodeVersion $nodeVersion `
+            -NpmVersion $npmVersion
       - name: Verify Kubernetes runtime policy
         shell: pwsh
         run: ./scripts/test-runtime-network.ps1
@@ -42,3 +115,14 @@ jobs:
         run: |
           docker compose config > /dev/null
           jq empty infra/local/keycloak/realm-governance.json
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+      - name: Enforce secret scan result
+        if: always() && steps.gitleaks.outcome != 'success'
+        shell: bash
+        run: exit 1

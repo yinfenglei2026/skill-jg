@@ -8,6 +8,16 @@ if (-not (Test-Path -LiteralPath $mavenWrapperJar)) {
     Invoke-WebRequest -UseBasicParsing -Uri $wrapperProperties.wrapperUrl -OutFile $mavenWrapperJar
 }
 
+& (Join-Path $PSScriptRoot 'test-build-metadata.ps1')
+if (-not $?) {
+    exit 1
+}
+
+& (Join-Path $PSScriptRoot 'test-ci-supply-chain.ps1')
+if (-not $?) {
+    exit 1
+}
+
 $docker = (Get-Command docker -ErrorAction Stop).Source
 $dockerDesktopCompose = Join-Path (Split-Path (Split-Path $docker -Parent) -Parent) 'cli-plugins\docker-compose.exe'
 if (Test-Path -LiteralPath $dockerDesktopCompose) {

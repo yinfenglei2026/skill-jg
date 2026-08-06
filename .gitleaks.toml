@@ -1,0 +1,13 @@
+title = "Governance Portal synthetic fixture policy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Exact synthetic values used by local verification and examples."
+regexTarget = "match"
+regexes = [
+  '''^verify-(?:admin|governance|keycloak)(?:-admin)?-password$''',
+  '''^replace-with-local-test-user-password$''',
+  '''^change-me$'''
+]
