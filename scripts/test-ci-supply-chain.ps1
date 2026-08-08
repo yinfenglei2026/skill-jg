@@ -64,7 +64,7 @@ if ($gitleaksConfig -notmatch '(?m)^\s*regexTarget\s*=\s*"match"\s*$' -or
 }
 
 $rootVerifier = Get-Content -LiteralPath $rootVerifierPath -Raw
-foreach ($contractScript in @('test-build-metadata.ps1', 'test-ci-supply-chain.ps1')) {
+foreach ($contractScript in @('test-build-metadata.ps1', 'test-ci-supply-chain.ps1', 'test-cosign-install.ps1')) {
     if ($rootVerifier -notmatch [regex]::Escape($contractScript)) {
         throw "Root verifier must run $contractScript."
     }
@@ -89,6 +89,9 @@ $requiredEvidence = @(
     @{ Name = 'evidence artifact upload action'; Pattern = 'actions/upload-artifact@v4' }
     @{ Name = 'commit-scoped evidence artifact name'; Pattern = [regex]::Escape('ci-evidence-${{ github.sha }}') }
     @{ Name = 'strict evidence artifact upload'; Pattern = '(?m)^\s*if-no-files-found:\s*error\s*$' }
+    @{ Name = 'pinned Cosign installer'; Pattern = 'install-cosign\.ps1' }
+    @{ Name = 'Cosign version validation'; Pattern = '(?i)cosign[^\r\n]*version' }
+    @{ Name = 'Cosign executable export'; Pattern = 'COSIGN_EXECUTABLE' }
 )
 
 $missingEvidence = @(
@@ -107,6 +110,16 @@ if ($workflow -match '(?i)\bGITLEAKS_LICENSE\b') {
 }
 if ($workflow -match '@main\b') {
     throw 'CI workflow must not reference mutable @main actions or tools.'
+}
+
+if ($workflow -match '(?i)cosign[^\r\n]{0,120}\blatest\b') {
+    throw 'CI workflow must not use a floating Cosign version.'
+}
+foreach ($forbidden in @('--allow-http-registry', '--allow-insecure-registry',
+        '--insecure-ignore-tlog', '--registry-password', '--registry-token')) {
+    if ($workflow -match [regex]::Escape($forbidden)) {
+        throw "CI workflow contains forbidden Cosign token: $forbidden"
+    }
 }
 
 $broadIgnoredPathPatterns = @(

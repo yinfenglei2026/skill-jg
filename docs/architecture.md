@@ -35,9 +35,10 @@ The GitOps supply chain converts reviewed source into a verifiable release candi
 3. Build the runtime artifact and software bill of materials.
 4. Scan policy-relevant content, dependencies and container images.
 5. Push artifacts to OCI storage and calculate the release digest over the canonical release bundle.
-6. Record review and approval against that digest.
-7. Promote only an approved digest into the GitOps environment repository.
-8. Let the GitOps controller reconcile deployment intent into K3s.
+6. Authenticate a read-only Harbor lookup and verify the returned digest, fixed-key Cosign signature, and source-bound SLSA provenance.
+7. Record review and approval against that digest and retain the three verification evidence records atomically.
+8. Promote only an approved digest into the GitOps environment repository.
+9. Let the GitOps controller reconcile deployment intent into K3s.
 
 Tags are navigation aids only. A tag may move, but a release digest cannot. Rebuilding source creates a new digest and invalidates prior approvals for promotion purposes.
 
@@ -77,7 +78,7 @@ Direct egress from a capability to public model provider endpoints is denied by 
 | Boundary | Allowed flow | Enforcement |
 | --- | --- | --- |
 | User to Portal/control plane | Authenticated governance operations | OIDC, RBAC/ABAC, CSRF protection, audit log |
-| Control plane to data stores | Governance metadata and artifact lookup | Service identity, TLS, scoped database/registry credentials |
+| Control plane to data stores | Governance metadata and artifact lookup | Service identity, TLS, scoped database/Harbor robot credentials, fixed Cosign key, SLSA builder allowlist |
 | CI to registry/GitOps | Build output and digest promotion | Ephemeral CI identity, signing, protected branches |
 | GitOps controller to runtime | Reconcile approved deployment intent | Dedicated service account and namespace-scoped RBAC |
 | Runtime workload to dependencies | Only declared MCP, service and network destinations | NetworkPolicy, service identity, dependency lock |

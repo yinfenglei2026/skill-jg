@@ -29,6 +29,9 @@ release:
     repository: https://git.example.internal/support/assistant.git
     revision: 5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42
 
+  # Production verification requires an HTTPS repository without credentials,
+  # query, or fragment, plus a lowercase 40- or 64-character hexadecimal revision.
+
 spec:
   capabilities:
     - id: support-agent

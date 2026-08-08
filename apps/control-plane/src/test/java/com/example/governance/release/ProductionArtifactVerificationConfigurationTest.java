@@ -45,6 +45,21 @@ class ProductionArtifactVerificationConfigurationTest {
         }
     }
 
+    @Test
+    void rejects_relative_cosign_paths() {
+        new ApplicationContextRunner()
+                .withInitializer(context -> context.getEnvironment().setActiveProfiles("prod"))
+                .withUserConfiguration(ProductionArtifactVerificationConfiguration.class)
+                .withPropertyValues(
+                        "governance.artifact-verification.allowed-registry=registry.example.internal",
+                        "governance.artifact-verification.username=robot",
+                        "governance.artifact-verification.password=secret",
+                        "governance.artifact-verification.cosign-executable=cosign",
+                        "governance.artifact-verification.cosign-public-key=cosign.pub",
+                        "governance.artifact-verification.allowed-builder-ids=https://builder.example/internal")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
     private String javaExecutable() {
         String executable = System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
         return Path.of(System.getProperty("java.home"), "bin", executable).toAbsolutePath().toString();

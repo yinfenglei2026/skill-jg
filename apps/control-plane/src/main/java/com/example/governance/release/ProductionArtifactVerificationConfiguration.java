@@ -65,11 +65,11 @@ public class ProductionArtifactVerificationConfiguration {
     }
 
     private Path requiredPath(String value) {
-        return value == null || value.isBlank() ? null : Path.of(value).toAbsolutePath();
+        return value == null || value.isBlank() ? null : Path.of(value);
     }
 
     private Path optionalPath(String value) {
-        return value == null || value.isBlank() ? null : Path.of(value).toAbsolutePath();
+        return value == null || value.isBlank() ? null : Path.of(value);
     }
 
     private Set<URI> builderIds(String value) {

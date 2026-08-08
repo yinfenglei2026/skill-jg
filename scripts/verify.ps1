@@ -18,6 +18,11 @@ if (-not $?) {
     exit 1
 }
 
+& (Join-Path $PSScriptRoot 'test-cosign-install.ps1')
+if (-not $?) {
+    exit 1
+}
+
 $docker = (Get-Command docker -ErrorAction Stop).Source
 $dockerDesktopCompose = Join-Path (Split-Path (Split-Path $docker -Parent) -Parent) 'cli-plugins\docker-compose.exe'
 if (Test-Path -LiteralPath $dockerDesktopCompose) {
