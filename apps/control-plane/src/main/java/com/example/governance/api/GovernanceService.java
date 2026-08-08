@@ -10,6 +10,7 @@ import com.example.governance.manifest.CapabilityPackage;
 import com.example.governance.manifest.CapabilityPackageParser;
 import com.example.governance.manifest.InvalidCapabilityManifestException;
 import com.example.governance.release.ArtifactReference;
+import com.example.governance.release.ArtifactVerificationRequest;
 import com.example.governance.release.ArtifactVerifier;
 import com.example.governance.release.DependencyResolver;
 import com.example.governance.release.InvalidReleaseTransitionException;
@@ -93,9 +94,11 @@ public class GovernanceService {
             throw new InvalidCapabilityManifestException("release digest does not match artifact digest");
         }
         List<ReleaseDependency> locks = dependencyResolver.resolve(manifest, capabilityId);
-        VerificationEvidence evidence = artifactVerifier.verify(artifact);
+        ArtifactVerificationRequest verificationRequest = new ArtifactVerificationRequest(
+                artifact, manifest.release().sourceRepository(), manifest.release().sourceRevision());
+        List<VerificationEvidence> evidence = artifactVerifier.verify(verificationRequest);
         Release release = Release.draft(capabilityId, version, artifact.value(), artifact.digest(),
-                manifest.canonicalDocument(), manifest.canonicalDigest(), locks, List.of(evidence), now());
+                manifest.canonicalDocument(), manifest.canonicalDigest(), locks, evidence, now());
         releases.save(release);
         auditService.record(actor, "RELEASE_REGISTERED", releaseId(capabilityId, version), "ALLOW", release.digest(),
                 now());

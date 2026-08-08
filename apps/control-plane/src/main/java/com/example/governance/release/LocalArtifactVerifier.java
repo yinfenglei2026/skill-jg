@@ -1,5 +1,7 @@
 package com.example.governance.release;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -19,10 +21,11 @@ public class LocalArtifactVerifier implements ArtifactVerifier {
     }
 
     @Override
-    public VerificationEvidence verify(ArtifactReference artifact) {
+    public List<VerificationEvidence> verify(ArtifactVerificationRequest request) {
+        ArtifactReference artifact = request.artifact();
         if (!allowedRegistry.equals(artifact.registry())) {
             throw new ArtifactVerificationException("Artifact registry does not match the configured allowlist");
         }
-        return new VerificationEvidence("LOCAL_TEST_ATTESTATION", artifact.value(), artifact.digest());
+        return List.of(new VerificationEvidence("LOCAL_TEST_ATTESTATION", artifact.value(), artifact.digest()));
     }
 }
