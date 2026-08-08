@@ -20,6 +20,7 @@ This result authorizes continued engineering only. It is not a production-readin
 - Browser desktop/mobile: PASS in Chrome at 1440x900 and 390x844; APPROVER, OPERATOR, and READ_ONLY rendering matched role/state policy, OPERATOR published the digest-bound release from `APPROVED` to `PUBLISHED`, page-level overflow and clipping were absent, keyboard focus was visible, and sampled text contrast was at least 5.88:1
 - Browser-discovered identity fix: PASS; local provisioning now converges the Keycloak `realm roles` mapper into the ID token so the OIDC profile used by the Portal contains the same realm roles enforced from the access token by Spring
 - Offline Harbor/Cosign adapters: PASS; authenticated direct/Bearer digest lookup, custom CA transport, bounded process execution, temporary Docker auth cleanup, fixed-key signature invocation, strict SLSA source/builder policy, typed failures, and atomic three-record persistence are covered by local tests. Live Harbor/Cosign interoperability remains PARTIAL.
+- Live Harbor/Cosign attempt (2026-08-08): PARTIAL; official Harbor v2.15.2 and Cosign v3.0.6 release hashes, disposable HTTPS certificates, full Harbor configuration, and `prepare` output were verified. Harbor could not become healthy because Docker Hub repeatedly timed out while fetching image layers; the official 730,279,437-byte offline package path was also bounded after its observed transfer rate made completion impractical. No matrix row was marked PASS. The named Compose resources, runtime secrets/certificates, Docker CA trust, and partial archive were removed; zero named containers, volumes, or networks remained.
 - Hygiene: superseded clean worktree/branch `feat/task3-schema-contract-clean` removed after file/patch comparison; `stash@{0}` preserved
 
 Status meanings: PASS is repeatably demonstrated; PARTIAL has meaningful automated evidence but does not meet the full criterion; EXCEPTION is an acknowledged unimplemented control; NOT RUN has no execution evidence.
@@ -72,6 +73,6 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 ## Ordered Next Work
 
 1. Run the configured CI evidence workflow on this branch and record its immutable artifact digest and redacted scan reports.
-2. Execute live Harbor/Cosign positive and negative interoperability tests with a read-only robot account, pinned Cosign `v3.0.6`, fixed public key, and SLSA builder/source fixtures; record the hosted evidence artifact digest.
+2. Preload the verified Harbor v2.15.2 offline installer (SHA-256 `67517e0ba4a3f9db90731aa560dacbc0b24a0de04d5a1b428c7d32ea96656432`) or provide a reliable Docker Hub path, then execute the live Harbor/Cosign positive and negative interoperability matrix with a read-only robot account, pinned Cosign `v3.0.6`, fixed public key, and SLSA builder/source fixtures.
 3. Integrate external GitOps and K3s admission/reconciliation, then execute live network/RBAC/failure tests.
 4. Add Model Gateway, Agent + MCP + Skill invocation, observability, rollback, and the restricted read-only CLI.

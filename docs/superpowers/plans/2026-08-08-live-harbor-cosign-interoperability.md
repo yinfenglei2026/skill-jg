@@ -55,3 +55,11 @@
 - [ ] Update `docs/poc-acceptance-report.md` with live evidence and retain `PARTIAL` if any matrix row could not run; do not claim production readiness.
 - [ ] Run `scripts/verify.ps1` and commit the live harness/evidence update without pushing.
 
+## Execution Status (2026-08-08)
+
+- [x] Task 1 preflight and release-asset verification completed. Docker Engine 29.6.2 and Compose 5.3.1 were available; the Harbor online installer and both Cosign v3.0.6 platform hashes matched official GitHub release metadata.
+- [x] A disposable CA and `localhost` server certificate were generated with SANs for `localhost` and `127.0.0.1`; the full Harbor v2.15.2 configuration was rendered successfully with runtime-only secrets.
+- [x] Harbor `prepare` completed and generated the Compose configuration.
+- [ ] Harbor services did not start. Two Compose pulls and one direct image pull were bounded by Docker Hub TLS/no-progress timeouts. The official 730,279,437-byte offline installer was then attempted, but the observed transfer rate would require several hours, so it was stopped without loading unverified or incomplete content.
+- [ ] Tasks 3 and 4 were not run because no healthy Harbor endpoint existed. Live interoperability therefore remains `PARTIAL`; no positive or negative row is recorded as passing.
+- [x] The named Compose project was brought down and the dedicated runtime directory, Docker CA trust directory, partial download, process-only secrets, certificates, and test keys were removed. No named Harbor containers, volumes, or networks remained.
