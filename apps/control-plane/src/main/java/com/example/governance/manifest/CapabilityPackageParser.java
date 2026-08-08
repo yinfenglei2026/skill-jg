@@ -43,7 +43,9 @@ public final class CapabilityPackageParser {
     private static final String KIND = "CapabilityPackage";
     private static final int MAX_SEMANTIC_VERSION_LENGTH = 256;
     private static final int MAX_RESOURCE_QUANTITY_LENGTH = 128;
+    private static final int MAX_SOURCE_REPOSITORY_LENGTH = 384;
     private static final Pattern SHA256 = Pattern.compile("sha256:[a-f0-9]{64}");
+    private static final Pattern GIT_REVISION = Pattern.compile("(?:[a-f0-9]{40}|[a-f0-9]{64})");
     private static final Pattern SEMVER = Pattern.compile(
             "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)"
                     + "(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)"
@@ -586,14 +588,35 @@ public final class CapabilityPackageParser {
         if (!MEDIA_TYPE.matcher(mediaType).matches()) {
             throw invalid("invalid release.artifact.mediaType");
         }
-        JsonNode sourceNode = release.get("source");
-        if (sourceNode != null) {
-            ObjectNode source = requireObject(sourceNode, "release.source");
-            requireOnlyFields(source, SOURCE_FIELDS, "release.source");
-            text(source, "repository", "release.source.repository");
-            text(source, "revision", "release.source.revision");
+        ObjectNode source = object(release, "source", "release.source");
+        requireOnlyFields(source, SOURCE_FIELDS, "release.source");
+        String sourceRepository = requireNonBlankText(source, "repository", "release.source.repository");
+        if (!isValidSourceRepository(sourceRepository)) {
+            throw invalid("invalid release.source.repository");
         }
-        return new ReleaseDescriptor(digest, artifactUri);
+        String sourceRevision = requireNonBlankText(source, "revision", "release.source.revision");
+        if (!GIT_REVISION.matcher(sourceRevision).matches()) {
+            throw invalid("invalid release.source.revision");
+        }
+        return new ReleaseDescriptor(digest, artifactUri, sourceRepository, sourceRevision);
+    }
+
+    private boolean isValidSourceRepository(String value) {
+        if (value.length() > MAX_SOURCE_REPOSITORY_LENGTH || value.chars().anyMatch(Character::isWhitespace)) {
+            return false;
+        }
+        try {
+            URI uri = new URI(value).parseServerAuthority();
+            return "https".equals(uri.getScheme())
+                    && uri.getHost() != null && !uri.getHost().isBlank()
+                    && uri.getRawUserInfo() == null
+                    && uri.getRawQuery() == null
+                    && uri.getRawFragment() == null
+                    && uri.getPath() != null && !uri.getPath().isBlank() && !uri.getPath().equals("/")
+                    && uri.normalize().equals(uri);
+        } catch (URISyntaxException ignored) {
+            return false;
+        }
     }
 
     private boolean isValidArtifactUri(String value) {

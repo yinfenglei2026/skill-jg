@@ -25,7 +25,11 @@ public record CapabilityPackage(
     public record Metadata(String name, String namespace, String version) {
     }
 
-    public record ReleaseDescriptor(String digest, String artifactUri) {
+    public record ReleaseDescriptor(
+            String digest,
+            String artifactUri,
+            String sourceRepository,
+            String sourceRevision) {
     }
 
     public record CapabilityDefinition(

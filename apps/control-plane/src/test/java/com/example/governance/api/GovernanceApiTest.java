@@ -662,9 +662,13 @@ class GovernanceApiTest {
                             "name", capabilityId + "-package",
                             "namespace", DEPARTMENT,
                             "version", version),
-                    "release", Map.of("artifact", Map.of(
-                            "uri", "oci://registry.example.internal/governance/" + capabilityId,
-                            "mediaType", "application/vnd.example.capability.bundle.v1+tar")),
+                    "release", Map.of(
+                            "artifact", Map.of(
+                                    "uri", "oci://registry.example.internal/governance/" + capabilityId,
+                                    "mediaType", "application/vnd.example.capability.bundle.v1+tar"),
+                            "source", Map.of(
+                                    "repository", "https://git.example.internal/governance/" + capabilityId + ".git",
+                                    "revision", "5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42")),
                     "spec", Map.of("capabilities", List.of(capability))));
             CapabilityPackage parsed = MANIFEST_PARSER.parse(document);
             String digest = parsed.canonicalDigest();

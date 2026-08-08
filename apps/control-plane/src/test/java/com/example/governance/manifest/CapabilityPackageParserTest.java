@@ -47,6 +47,10 @@ class CapabilityPackageParserTest {
     void parses_the_complete_normative_manifest_and_preserves_documented_subtrees() {
         CapabilityPackage capabilityPackage = parser.parse(normativeManifest());
 
+        assertThat(capabilityPackage.release().sourceRepository())
+                .isEqualTo("https://git.example.internal/support/assistant.git");
+        assertThat(capabilityPackage.release().sourceRevision())
+                .isEqualTo("5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42");
         assertThat(capabilityPackage.capabilities()).hasSize(2);
         assertThat(capabilityPackage.canonicalDocument())
                 .contains("\"entrypoint\"")
@@ -147,6 +151,62 @@ class CapabilityPackageParserTest {
         assertInvalid(validManifest().replace("  artifact:\n    uri: " + ARTIFACT_URI
                         + "\n    mediaType: application/vnd.example.capability.bundle.v1+tar\n", ""),
                 "missing required release.artifact");
+    }
+
+    @Test
+    void requires_release_source_identity() {
+        assertInvalid(validManifest().replace("  source:\n"
+                        + "    repository: https://git.example.internal/support/assistant.git\n"
+                        + "    revision: 5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42\n", ""),
+                "missing required release.source");
+    }
+
+    @Test
+    void rejects_invalid_release_source_repositories() {
+        assertInvalid(validManifest().replace(
+                        "    repository: https://git.example.internal/support/assistant.git\n", ""),
+                "invalid release.source.repository");
+        for (String repository : new String[] {
+                "",
+                "   ",
+                "relative/path",
+                "http://git.example.internal/support/assistant.git",
+                "https://git.example.internal/support/assistant.git?token=secret",
+                "https://git.example.internal/support/assistant.git#fragment"
+        }) {
+            String rendered = repository.isBlank() ? "\"" + repository + "\"" : repository;
+            assertInvalid(validManifest().replace(
+                            "https://git.example.internal/support/assistant.git", rendered),
+                    "invalid release.source.repository");
+        }
+        String oversized = "https://git.example.internal/" + "a".repeat(370) + ".git";
+        assertInvalid(validManifest().replace(
+                        "https://git.example.internal/support/assistant.git", oversized),
+                "invalid release.source.repository");
+
+        String credentialBearing = validManifest().replace(
+                "https://git.example.internal/support/assistant.git",
+                "https://user:secret@git.example.internal/support/assistant.git");
+        assertCredentialRejected(credentialBearing, "secret");
+    }
+
+    @Test
+    void rejects_invalid_release_source_revisions() {
+        assertInvalid(validManifest().replace(
+                        "    revision: 5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42\n", ""),
+                "invalid release.source.revision");
+        for (String revision : new String[] {
+                "",
+                "   ",
+                "5d3c2c6e",
+                "5D3C2C6E816C4DD86819F57FC1D91AD30B9E3D42",
+                "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+        }) {
+            String rendered = revision.isBlank() ? "\"" + revision + "\"" : revision;
+            assertInvalid(validManifest().replace(
+                            "5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42", rendered),
+                    "invalid release.source.revision");
+        }
     }
 
     @Test
@@ -983,6 +1043,9 @@ class CapabilityPackageParserTest {
                   artifact:
                     uri: %s
                     mediaType: application/vnd.example.capability.bundle.v1+tar
+                  source:
+                    repository: https://git.example.internal/support/assistant.git
+                    revision: 5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42
                 spec:
                   capabilities:
                     - id: support-agent
@@ -1106,6 +1169,9 @@ class CapabilityPackageParserTest {
                     mediaType: application/vnd.example.capability.bundle.v1+tar
                     uri: %s
                   digest: %s
+                  source:
+                    revision: 5d3c2c6e816c4dd86819f57fc1d91ad30b9e3d42
+                    repository: https://git.example.internal/support/assistant.git
                 metadata:
                   version: 1.4.0
                   namespace: customer-operations
