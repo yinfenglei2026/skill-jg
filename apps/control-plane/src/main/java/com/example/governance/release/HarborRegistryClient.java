@@ -54,7 +54,7 @@ public final class HarborRegistryClient {
         }
 
         HarborBearerChallenge challenge = HarborBearerChallenge.parse(
-                anonymous.firstHeader("WWW-Authenticate").orElse(null), registry, artifact.repository());
+                onlyHeader(anonymous, "WWW-Authenticate"), registry, artifact.repository());
         String token = fetchToken(challenge);
         RegistryHttpResponse authenticated = sendWithRetry(request("HEAD", manifestUri,
                 Map.of("Accept", OCI_ACCEPT, "Authorization", "Bearer " + token)));
@@ -129,11 +129,18 @@ public final class HarborRegistryClient {
     }
 
     private void requireDigest(RegistryHttpResponse response, String requestedDigest) {
-        String resolved = response.firstHeader("Docker-Content-Digest")
-                .orElseThrow(() -> failure(ArtifactVerificationFailure.REGISTRY_PROTOCOL_INVALID));
+        String resolved = onlyHeader(response, "Docker-Content-Digest");
         if (!requestedDigest.equals(resolved)) {
             throw failure(ArtifactVerificationFailure.DIGEST_MISMATCH);
         }
+    }
+
+    private String onlyHeader(RegistryHttpResponse response, String name) {
+        java.util.List<String> values = response.headerValues(name);
+        if (values.size() != 1 || values.get(0).isBlank()) {
+            throw failure(ArtifactVerificationFailure.REGISTRY_PROTOCOL_INVALID);
+        }
+        return values.get(0);
     }
 
     private String encode(String value) {

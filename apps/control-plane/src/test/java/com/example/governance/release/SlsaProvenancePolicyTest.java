@@ -39,6 +39,16 @@ class SlsaProvenancePolicyTest {
                 + statement(BUILDER, REPOSITORY, REVISION) + "]";
         assertFailure(duplicate, ArtifactVerificationFailure.PROVENANCE_INVALID);
         assertFailure("[]", ArtifactVerificationFailure.PROVENANCE_MISSING);
+
+        ObjectNode wrongType = mapper.createObjectNode();
+        wrongType.setAll((ObjectNode) mapper.readTree(new String(Base64.getDecoder().decode(
+                mapper.readTree(statement(BUILDER, REPOSITORY, REVISION)).get("payload").textValue()),
+                StandardCharsets.UTF_8)));
+        wrongType.put("_type", "https://in-toto.io/Statement/v0.1");
+        String payload = Base64.getEncoder().encodeToString(
+                mapper.writeValueAsBytes(wrongType));
+        assertFailure("[{\"payload\":\"" + payload + "\"}]",
+                ArtifactVerificationFailure.PROVENANCE_POLICY_MISMATCH);
     }
 
     private void assertFailure(String json, ArtifactVerificationFailure expected) {

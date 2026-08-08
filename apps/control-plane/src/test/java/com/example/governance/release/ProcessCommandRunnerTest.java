@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +48,20 @@ class ProcessCommandRunnerTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void terminates_a_running_process_as_soon_as_output_overflows() throws Exception {
+        Instant started = Instant.now();
+
+        assertThatThrownBy(() -> runner().run(List.of(javaExecutable(), "-cp",
+                System.getProperty("java.class.path"), OutputFloodProcess.class.getName()),
+                Map.of(), workspace, Duration.ofSeconds(30), 1024))
+                .isInstanceOf(ArtifactVerificationException.class)
+                .extracting(error -> ((ArtifactVerificationException) error).failure())
+                .isEqualTo(ArtifactVerificationFailure.VERIFIER_OUTPUT_INVALID);
+        assertThat(Duration.between(started, Instant.now())).isLessThan(Duration.ofSeconds(5));
+        assertThat(Files.list(workspace)).isEmpty();
+    }
+
     private ProcessCommandRunner runner() {
         return new ProcessCommandRunner();
     }
@@ -54,5 +69,14 @@ class ProcessCommandRunnerTest {
     private String javaExecutable() {
         String executable = System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
         return Path.of(System.getProperty("java.home"), "bin", executable).toAbsolutePath().toString();
+    }
+
+    public static final class OutputFloodProcess {
+        public static void main(String[] args) {
+            byte[] output = new byte[8192];
+            while (true) {
+                System.out.write(output, 0, output.length);
+            }
+        }
     }
 }

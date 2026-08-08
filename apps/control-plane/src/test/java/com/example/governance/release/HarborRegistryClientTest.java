@@ -72,6 +72,12 @@ class HarborRegistryClientTest {
         assertFailure(new ScriptedTransport(response(200,
                 Map.of("Docker-Content-Digest", List.of("sha256:" + "b".repeat(64))), "")),
                 ArtifactVerificationFailure.DIGEST_MISMATCH);
+        assertFailure(new ScriptedTransport(response(401, Map.of("WWW-Authenticate", List.of(
+                challenge().get("WWW-Authenticate").get(0), "Basic realm=\"registry\"")), "")),
+                ArtifactVerificationFailure.REGISTRY_PROTOCOL_INVALID);
+        assertFailure(new ScriptedTransport(response(200, Map.of("Docker-Content-Digest", List.of(
+                DIGEST, "sha256:" + "b".repeat(64))), "")),
+                ArtifactVerificationFailure.REGISTRY_PROTOCOL_INVALID);
     }
 
     @Test

@@ -9,8 +9,10 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 
 public final class CosignClient {
     private final CommandRunner runner;
@@ -38,8 +40,8 @@ public final class CosignClient {
             if (attestation.exitCode() != 0) {
                 throw failure(ArtifactVerificationFailure.PROVENANCE_INVALID);
             }
-            requireNonEmptyArray(attestation.stdout(), ArtifactVerificationFailure.PROVENANCE_MISSING);
-            return new CosignVerification(publicKeyFingerprint(), signature.stdout(), attestation.stdout());
+            String attestations = normalizeAttestationRecords(attestation.stdout());
+            return new CosignVerification(publicKeyFingerprint(), signature.stdout(), attestations);
         }
     }
 
@@ -88,6 +90,30 @@ public final class CosignClient {
             if (root.isEmpty()) {
                 throw failure(emptyFailure);
             }
+        } catch (ArtifactVerificationException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw failure(ArtifactVerificationFailure.VERIFIER_OUTPUT_INVALID);
+        }
+    }
+
+    private String normalizeAttestationRecords(String output) {
+        try (JsonParser parser = json.createParser(output)) {
+            ArrayNode records = json.createArrayNode();
+            JsonNode value;
+            while ((value = parser.readValueAsTree()) != null) {
+                if (value.isArray()) {
+                    value.forEach(records::add);
+                } else if (value.isObject()) {
+                    records.add(value);
+                } else {
+                    throw failure(ArtifactVerificationFailure.VERIFIER_OUTPUT_INVALID);
+                }
+            }
+            if (records.isEmpty()) {
+                throw failure(ArtifactVerificationFailure.PROVENANCE_MISSING);
+            }
+            return json.writeValueAsString(records);
         } catch (ArtifactVerificationException exception) {
             throw exception;
         } catch (Exception exception) {

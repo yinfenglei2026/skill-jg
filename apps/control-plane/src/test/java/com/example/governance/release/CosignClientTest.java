@@ -28,12 +28,13 @@ class CosignClientTest {
     void runs_exactly_signature_then_attestation_commands_without_secrets_or_insecure_flags() throws Exception {
         RecordingRunner runner = new RecordingRunner(
                 new CommandResult(0, "[{\"critical\":{}}]", ""),
-                new CommandResult(0, "[{\"payload\":\"e30=\"}]", ""));
+                new CommandResult(0, "{\"payload\":\"e30=\"}\n", ""));
         CosignClient client = client(runner);
 
         CosignVerification result = client.verify(REQUEST);
 
         assertThat(result.signatureJson()).startsWith("[");
+        assertThat(result.attestationJson()).isEqualTo("[{\"payload\":\"e30=\"}]");
         assertThat(runner.commands).hasSize(2);
         assertThat(runner.commands.get(0)).containsExactly(
                 javaExecutable(), "verify", "--key", key().toString(), "--output", "json", REQUEST.artifact().value());

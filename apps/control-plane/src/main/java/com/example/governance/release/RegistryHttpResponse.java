@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 
 public record RegistryHttpResponse(int status, Map<String, List<String>> headers, byte[] body) {
     public RegistryHttpResponse {
@@ -20,9 +19,8 @@ public record RegistryHttpResponse(int status, Map<String, List<String>> headers
         return body.clone();
     }
 
-    public Optional<String> firstHeader(String name) {
-        List<String> values = headers.get(name.toLowerCase(Locale.ROOT));
-        return values == null || values.isEmpty() ? Optional.empty() : Optional.of(values.get(0));
+    public List<String> headerValues(String name) {
+        return headers.getOrDefault(name.toLowerCase(Locale.ROOT), List.of());
     }
 
     public String utf8Body() {

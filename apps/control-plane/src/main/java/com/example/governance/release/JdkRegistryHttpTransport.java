@@ -1,6 +1,8 @@
 package com.example.governance.release;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,10 +27,28 @@ public final class JdkRegistryHttpTransport implements RegistryHttpTransport {
                 .timeout(request.timeout())
                 .method(request.method(), HttpRequest.BodyPublishers.ofByteArray(request.body()));
         request.headers().forEach(builder::header);
-        HttpResponse<byte[]> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
-        if (response.body().length > maxBodyBytes) {
-            throw new IOException("registry response exceeds configured limit");
+        HttpResponse<InputStream> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        byte[] body;
+        try (InputStream input = response.body()) {
+            body = readBounded(input, maxBodyBytes);
         }
-        return new RegistryHttpResponse(response.statusCode(), response.headers().map(), response.body());
+        return new RegistryHttpResponse(response.statusCode(), response.headers().map(), body);
+    }
+
+    static byte[] readBounded(InputStream input, long maxBodyBytes) throws IOException {
+        if (maxBodyBytes < 0 || maxBodyBytes >= Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("maxBodyBytes is outside the supported range");
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream((int) Math.min(maxBodyBytes, 8192));
+        byte[] buffer = new byte[8192];
+        while (output.size() <= maxBodyBytes) {
+            int remaining = (int) (maxBodyBytes + 1 - output.size());
+            int read = input.read(buffer, 0, Math.min(buffer.length, remaining));
+            if (read < 0) {
+                return output.toByteArray();
+            }
+            output.write(buffer, 0, read);
+        }
+        throw new IOException("registry response exceeds configured limit");
     }
 }
