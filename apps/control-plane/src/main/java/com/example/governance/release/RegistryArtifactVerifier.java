@@ -41,7 +41,7 @@ public class RegistryArtifactVerifier implements ArtifactVerifier {
     public List<VerificationEvidence> verify(ArtifactVerificationRequest request) {
         ArtifactReference artifact = request.artifact();
         if (!allowedRegistry.equals(artifact.registry())) {
-            throw new ArtifactVerificationException("Artifact registry does not match the configured allowlist");
+            throw new ArtifactVerificationException(ArtifactVerificationFailure.REGISTRY_NOT_ALLOWED);
         }
 
         URI manifestUri = URI.create("https://" + artifact.registry() + "/v2/" + artifact.repository()
@@ -55,18 +55,18 @@ public class RegistryArtifactVerifier implements ArtifactVerifier {
         try {
             HttpResponse<Void> response = client.send(httpRequest, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() != 200) {
-                throw new ArtifactVerificationException("OCI manifest lookup did not return HTTP 200");
+                throw new ArtifactVerificationException(ArtifactVerificationFailure.REGISTRY_PROTOCOL_INVALID);
             }
             String resolvedDigest = response.headers().firstValue("Docker-Content-Digest").orElse("");
             if (!artifact.digest().equals(resolvedDigest)) {
-                throw new ArtifactVerificationException("OCI registry did not resolve the requested immutable digest");
+                throw new ArtifactVerificationException(ArtifactVerificationFailure.DIGEST_MISMATCH);
             }
             return List.of(new VerificationEvidence("REGISTRY_DIGEST", artifact.value(), artifact.digest()));
         } catch (IOException exception) {
-            throw new ArtifactVerificationException("OCI manifest lookup failed");
+            throw new ArtifactVerificationException(ArtifactVerificationFailure.REGISTRY_UNAVAILABLE);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new ArtifactVerificationException("OCI manifest lookup was interrupted");
+            throw new ArtifactVerificationException(ArtifactVerificationFailure.REGISTRY_UNAVAILABLE);
         }
     }
 }

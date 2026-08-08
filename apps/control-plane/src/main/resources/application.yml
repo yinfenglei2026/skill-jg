@@ -28,3 +28,9 @@ governance:
     allowed-origin: ${PORTAL_ALLOWED_ORIGIN:http://localhost:5173}
   artifact-verification:
     allowed-registry: ${HARBOR_REGISTRY:}
+    username: ${HARBOR_USERNAME:}
+    password: ${HARBOR_PASSWORD:}
+    registry-ca-cert: ${HARBOR_CA_CERT:}
+    cosign-executable: ${COSIGN_EXECUTABLE:}
+    cosign-public-key: ${COSIGN_PUBLIC_KEY:}
+    allowed-builder-ids: ${SLSA_ALLOWED_BUILDER_IDS:}

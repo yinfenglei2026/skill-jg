@@ -24,7 +24,7 @@ public class LocalArtifactVerifier implements ArtifactVerifier {
     public List<VerificationEvidence> verify(ArtifactVerificationRequest request) {
         ArtifactReference artifact = request.artifact();
         if (!allowedRegistry.equals(artifact.registry())) {
-            throw new ArtifactVerificationException("Artifact registry does not match the configured allowlist");
+            throw new ArtifactVerificationException(ArtifactVerificationFailure.REGISTRY_NOT_ALLOWED);
         }
         return List.of(new VerificationEvidence("LOCAL_TEST_ATTESTATION", artifact.value(), artifact.digest()));
     }
