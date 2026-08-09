@@ -50,8 +50,8 @@
 
 ### Task 5: Cleanup and evidence
 
-- [x] Stop Harbor and remove only the named Compose project, volumes, and network. Runtime/key cleanup has a documented user-requested exception.
-- [x] Confirm no Harbor containers/volumes remain, record the five retained runtime files, and verify the branch contains only intended scripts/tests/docs.
+- [x] Stop Harbor and remove only the named Compose project, volumes, and network, then delete the five runtime-only files and their empty runtime directories.
+- [x] Confirm no Harbor containers/volumes remain, confirm the runtime path is absent, and verify the branch contains only intended scripts/tests/docs.
 - [x] Update `docs/poc-acceptance-report.md` with live evidence and retain `PARTIAL` for the broader PoC; do not claim production readiness.
 - [x] Run `scripts/verify.ps1` and commit the live harness/evidence update without pushing.
 
@@ -64,6 +64,6 @@
 - [x] A private `livecosign` project, project-scoped Robot, deterministic `FROM scratch` OCI fixture, and immutable manifest digest `sha256:e2f2891aaf186802295606ca01174caa70ea5800f1aab4a64654ab54ac71a675` were created. The fixture was pushed with an admin-only process credential and read back through the Robot path.
 - [x] Cosign v3.0.6 Windows executable was verified at the supplied absolute path with SHA-256 `9b85a88ebff2d9dd30ff4984a6f61f2cedc232dd87d81fa7f2ff3c0ed96c241c` and `cosign version` reported `v3.0.6`.
 - [x] The live Harbor/Cosign matrix passed: the positive signature/SLSA verification matched the exact digest, builder, repository, and revision; eight negative cases returned the expected typed failures. Evidence was bound to test commit `d4b266d0c0d5bdbfe26c38a68abbf9857848e2f0` and diff SHA-256 `fe9a7a867c52b7042e4cf1448acc67f61bde5db88af704e9d68c202feb446979`.
-- [x] The named Compose project, nine containers, network, and anonymous volumes were brought down and removed. Five runtime files, including disposable test key material, remain at `G:\project\skill-jg-runtime\harbor-live-2026-08-08` because the user requested that cleanup exception.
-- [ ] Full runtime secret cleanup remains pending until those user-requested files are explicitly released for deletion.
+- [x] The named Compose project, nine containers, network, and anonymous volumes were brought down and removed. The five remaining runtime-only files, including disposable test key material, were deleted, their empty directories were removed, and `G:\project\skill-jg-runtime\harbor-live-2026-08-08` no longer exists.
+- [x] Full disposable runtime cleanup completed; no runtime secret-cleanup exception remains.
 - [x] `git diff --check` and `scripts/verify.ps1` passed; the branch is ready for a local commit without pushing.
