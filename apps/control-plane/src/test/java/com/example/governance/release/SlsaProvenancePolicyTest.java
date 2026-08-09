@@ -28,6 +28,14 @@ class SlsaProvenancePolicyTest {
     }
 
     @Test
+    void accepts_the_in_toto_v0_1_envelope_emitted_by_cosign_for_slsa_v1() throws Exception {
+        SlsaProvenanceSummary summary = policy().verify(request,
+                attestationWithStatementType("https://in-toto.io/Statement/v0.1"));
+
+        assertThat(summary.subject()).isEqualTo("builder:" + BUILDER + "|source:" + REPOSITORY + "@" + REVISION);
+    }
+
+    @Test
     void rejects_each_policy_mismatch_and_ambiguous_statement() throws Exception {
         assertFailure(attestation("https://other-builder.example", REPOSITORY, REVISION),
                 ArtifactVerificationFailure.PROVENANCE_POLICY_MISMATCH);
@@ -44,7 +52,7 @@ class SlsaProvenancePolicyTest {
         wrongType.setAll((ObjectNode) mapper.readTree(new String(Base64.getDecoder().decode(
                 mapper.readTree(statement(BUILDER, REPOSITORY, REVISION)).get("payload").textValue()),
                 StandardCharsets.UTF_8)));
-        wrongType.put("_type", "https://in-toto.io/Statement/v0.1");
+        wrongType.put("_type", "https://in-toto.io/Statement/v0.0");
         String payload = Base64.getEncoder().encodeToString(
                 mapper.writeValueAsBytes(wrongType));
         assertFailure("[{\"payload\":\"" + payload + "\"}]",
@@ -64,6 +72,15 @@ class SlsaProvenancePolicyTest {
 
     private String attestation(String builder, String repository, String revision) throws Exception {
         return "[" + statement(builder, repository, revision) + "]";
+    }
+
+    private String attestationWithStatementType(String statementType) throws Exception {
+        ObjectNode envelope = (ObjectNode) mapper.readTree(statement(BUILDER, REPOSITORY, REVISION));
+        ObjectNode decoded = (ObjectNode) mapper.readTree(new String(Base64.getDecoder().decode(
+                envelope.get("payload").textValue()), StandardCharsets.UTF_8));
+        decoded.put("_type", statementType);
+        envelope.put("payload", Base64.getEncoder().encodeToString(mapper.writeValueAsBytes(decoded)));
+        return "[" + mapper.writeValueAsString(envelope) + "]";
     }
 
     private String statement(String builder, String repository, String revision) throws Exception {

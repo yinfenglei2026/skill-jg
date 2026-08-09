@@ -37,10 +37,11 @@ class CosignClientTest {
         assertThat(result.attestationJson()).isEqualTo("[{\"payload\":\"e30=\"}]");
         assertThat(runner.commands).hasSize(2);
         assertThat(runner.commands.get(0)).containsExactly(
-                javaExecutable(), "verify", "--key", key().toString(), "--output", "json", REQUEST.artifact().value());
+                javaExecutable(), "verify", "--key", key().toString(), "--output", "json",
+                "registry.example.internal/team/app@" + DIGEST);
         assertThat(runner.commands.get(1)).containsExactly(
                 javaExecutable(), "verify-attestation", "--key", key().toString(), "--type", "slsaprovenance1",
-                "--output", "json", REQUEST.artifact().value());
+                "--output", "json", "registry.example.internal/team/app@" + DIGEST);
         assertThat(runner.commands.toString()).doesNotContain("robot-secret", "--allow-http-registry",
                 "--allow-insecure-registry", "--insecure-ignore-tlog", "--registry-password", "--registry-token");
     }

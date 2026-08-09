@@ -50,7 +50,7 @@ public final class CosignClient {
         command.add("--output");
         command.add("json");
         addCa(command);
-        command.add(request.artifact().value());
+        command.add(cosignReference(request.artifact()));
         return List.copyOf(command);
     }
 
@@ -61,8 +61,12 @@ public final class CosignClient {
         command.add("--output");
         command.add("json");
         addCa(command);
-        command.add(request.artifact().value());
+        command.add(cosignReference(request.artifact()));
         return List.copyOf(command);
+    }
+
+    private String cosignReference(ArtifactReference artifact) {
+        return artifact.registry() + "/" + artifact.repository() + "@" + artifact.digest();
     }
 
     private List<String> baseCommand(String operation) {

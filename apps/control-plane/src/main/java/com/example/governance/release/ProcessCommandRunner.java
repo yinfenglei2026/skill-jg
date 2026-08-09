@@ -18,6 +18,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class ProcessCommandRunner implements CommandRunner {
+    private static final List<String> MINIMAL_RUNTIME_ENVIRONMENT = List.of(
+            "SystemRoot", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "TEMP", "TMP",
+            "HOME", "XDG_CACHE_HOME", "TMPDIR");
+
     @Override
     public CommandResult run(
             List<String> command,
@@ -38,6 +42,12 @@ public final class ProcessCommandRunner implements CommandRunner {
             ProcessBuilder builder = new ProcessBuilder(command)
                     .directory(workspace.toFile());
             builder.environment().clear();
+            for (String name : MINIMAL_RUNTIME_ENVIRONMENT) {
+                String value = System.getenv(name);
+                if (value != null && !value.isBlank()) {
+                    builder.environment().put(name, value);
+                }
+            }
             if (environment != null && environment.containsKey("DOCKER_CONFIG")) {
                 builder.environment().put("DOCKER_CONFIG", environment.get("DOCKER_CONFIG"));
             }

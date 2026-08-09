@@ -9,7 +9,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class SlsaProvenancePolicy {
-    private static final String IN_TOTO_STATEMENT_V1 = "https://in-toto.io/Statement/v1";
+    private static final Set<String> IN_TOTO_STATEMENT_TYPES = Set.of(
+            "https://in-toto.io/Statement/v1",
+            "https://in-toto.io/Statement/v0.1");
     private static final String SLSA_V1 = "https://slsa.dev/provenance/v1";
     private final Set<URI> allowedBuilderIds;
     private final ObjectMapper json = new ObjectMapper();
@@ -48,7 +50,7 @@ public final class SlsaProvenancePolicy {
         if (statement == null || !statement.isObject()) {
             throw failure(ArtifactVerificationFailure.PROVENANCE_INVALID);
         }
-        if (!IN_TOTO_STATEMENT_V1.equals(text(statement, "_type"))) {
+        if (!IN_TOTO_STATEMENT_TYPES.contains(text(statement, "_type"))) {
             throw mismatch();
         }
         if (!SLSA_V1.equals(text(statement, "predicateType"))) {

@@ -37,6 +37,24 @@ class ProcessCommandRunnerTest {
     }
 
     @Test
+    void preserves_the_user_home_needed_by_cosign_without_leaking_arbitrary_environment() throws Exception {
+        String homeVariable = System.getProperty("os.name").toLowerCase().contains("win")
+                ? "USERPROFILE"
+                : "HOME";
+        String home = System.getenv(homeVariable);
+        CommandResult result = runner().run(List.of(javaExecutable(), "-cp",
+                System.getProperty("java.class.path"), EnvironmentEchoProcess.class.getName(),
+                homeVariable, "DOCKER_CONFIG", "SHOULD_NOT_LEAK"),
+                Map.of("DOCKER_CONFIG", workspace.toString(), "SHOULD_NOT_LEAK", "value"),
+                workspace, Duration.ofSeconds(5), 1024 * 1024);
+
+        assertThat(home).isNotBlank();
+        assertThat(result.stdout()).contains(homeVariable + "=" + home)
+                .contains("DOCKER_CONFIG=" + workspace)
+                .doesNotContain("SHOULD_NOT_LEAK=value");
+    }
+
+    @Test
     void rejects_output_overflow_and_non_absolute_executable() {
         assertThatThrownBy(() -> runner().run(List.of(javaExecutable(), "-version"), Map.of(), workspace,
                 Duration.ofSeconds(5), 1))
@@ -76,6 +94,17 @@ class ProcessCommandRunnerTest {
             byte[] output = new byte[8192];
             while (true) {
                 System.out.write(output, 0, output.length);
+            }
+        }
+    }
+
+    public static final class EnvironmentEchoProcess {
+        public static void main(String[] names) {
+            for (String name : names) {
+                String value = System.getenv(name);
+                if (value != null) {
+                    System.out.println(name + "=" + value);
+                }
             }
         }
     }
