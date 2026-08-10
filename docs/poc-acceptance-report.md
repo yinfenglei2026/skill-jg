@@ -2,23 +2,24 @@
 
 ## Decision
 
-**Overall status: PARTIAL.** The local governance control-plane baseline and disposable Harbor/Cosign interoperability matrix are repeatable for PostgreSQL migration, Keycloak JWT authentication, Portal component and real-browser behavior, and static runtime declarations. Real digest-bound approval, audit persistence, browser publication, and the local signed-artifact verification path were exercised. The full phase-one PoC is not accepted because external GitOps/runtime admission and the Agent + MCP + Skill golden path are not implemented.
+**Overall status: PARTIAL.** The local governance control-plane baseline, hosted CI supply-chain evidence, and disposable Harbor/Cosign interoperability matrix are repeatable for PostgreSQL migration, Keycloak JWT authentication, Portal component and real-browser behavior, and static runtime declarations. Real digest-bound approval, audit persistence, browser publication, and the local signed-artifact verification path were exercised. The full phase-one PoC is not accepted because external GitOps/runtime admission and the Agent + MCP + Skill golden path are not implemented.
 
 This result authorizes continued engineering only. It is not a production-readiness or deployment approval.
 
 ## Run Evidence
 
-- Date: 2026-08-06, Asia/Shanghai
-- Branch: `feat/poc-acceptance`
-- Evidence commit before this update: `0f84a6b0cd07ee11e213acab612a38bfad95c889`
+- Evidence window: 2026-08-06 through 2026-08-10, Asia/Shanghai
+- Branch: `feat/harbor-cosign-verification`
+- Evidence commit before this update: `047d662bac309dea2704c0d3e1acd6bd52937709`
 - Local toolchain: Java 17.0.19, Node 24.15.0, npm 11.12.1, Docker Engine 29.6.2, Docker Compose 5.3.1, kubectl 1.36.1
 - Components: Spring Boot 3.2.0, PostgreSQL 16.4, Keycloak 26.0.7, React 19.2.0, TypeScript 5.9.3, Vite 7.3.6, Vitest 4.1.8
-- `scripts/verify.ps1`: PASS; Java 125 tests with 1 conditional PostgreSQL test skipped, Keycloak realm 2 tests, Portal 25 tests, TypeScript, production Vite build, Kubernetes network contracts, Compose config, and realm JSON
+- `scripts/verify.ps1`: PASS on 2026-08-10; Java 163 tests with 2 conditional integration tests skipped, Keycloak realm 2 tests, Portal 25 tests, TypeScript, production Vite build, CycloneDX SBOM generation, Kubernetes network contracts, Compose config, and realm JSON
 - `scripts/test-postgres-upgrade.ps1`: PASS; disposable PostgreSQL applied V1-V3, preserved the fixture through V4, accepted nullable Skill import paths, and removed its container/network/volume
 - `scripts/smoke-local-auth.ps1`: PASS against real Keycloak and Spring; access-token and ID-token department/role claims matched without printing either token
 - Real approval API: PASS; `acceptance-agent:1.0.0` reached `APPROVED`, the 71-character SHA-256 digest was unchanged, and the audit actor equaled the JWT `sub`
 - Browser desktop/mobile: PASS in Chrome at 1440x900 and 390x844; APPROVER, OPERATOR, and READ_ONLY rendering matched role/state policy, OPERATOR published the digest-bound release from `APPROVED` to `PUBLISHED`, page-level overflow and clipping were absent, keyboard focus was visible, and sampled text contrast was at least 5.88:1
 - Browser-discovered identity fix: PASS; local provisioning now converges the Keycloak `realm roles` mapper into the ID token so the OIDC profile used by the Portal contains the same realm roles enforced from the access token by Spring
+- Hosted CI supply-chain evidence (2026-08-10): PASS in [GitHub Actions run 31351148994](https://github.com/yinfenglei2026/skill-jg/actions/runs/31351148994) for commit `047d662bac309dea2704c0d3e1acd6bd52937709`. The full-history redacted Gitleaks scan, Java and Node verification, both CycloneDX SBOM checks, deterministic build metadata, Kubernetes policy checks, and local declaration validation succeeded. Artifact `ci-evidence-047d662bac309dea2704c0d3e1acd6bd52937709` has GitHub artifact ID `9049018482`, size 59,338 bytes, and digest `sha256:77525ec2293e0c056c85f523d7ffc9af85f2fa1b752180a2a35a071fe1ba3ddb`.
 - Offline Harbor/Cosign adapters: PASS; authenticated direct/Bearer digest lookup, custom CA transport, bounded process execution, temporary Docker auth cleanup, fixed-key signature invocation, strict SLSA source/builder policy, typed failures, and atomic three-record persistence are covered by local tests.
 - Live Harbor/Cosign interoperability (2026-08-09): PASS for the disposable matrix. Harbor v2.15.2 (offline package SHA-256 `67517e0ba4a3f9db90731aa560dacbc0b24a0de04d5a1b428c7d32ea96656432`) reached nine healthy services over HTTPS; Cosign v3.0.6 matched SHA-256 `9b85a88ebff2d9dd30ff4984a6f61f2cedc232dd87d81fa7f2ff3c0ed96c241c`. The immutable fixture digest was `sha256:f87a92474a5ea962707dd4afa7ae35bc5681b0ac946a719f8491548e443dbb28`. The positive signature and SLSA attestation verification passed with exact builder `https://builder.example/internal`, repository `https://git.example.internal/team/app.git`, and revision `d4b266d0c0d5bdbfe26c38a68abbf9857848e2f0`; eight negative cases returned the expected typed failures (`REGISTRY_AUTH_FAILED`, `SIGNATURE_INVALID`, `PROVENANCE_INVALID`, `PROVENANCE_POLICY_MISMATCH`, and `REGISTRY_UNAVAILABLE`). Evidence was bound to test commit `d4b266d0c0d5bdbfe26c38a68abbf9857848e2f0` and diff SHA-256 `fe9a7a867c52b7042e4cf1448acc67f61bde5db88af704e9d68c202feb446979` before this documentation commit. Harbor containers, network, volumes, and the disposable runtime directory were removed after the run; `G:\project\skill-jg-runtime\harbor-live-2026-08-08` no longer exists. This is local PoC evidence only and this report makes no production-readiness claim.
 - Hygiene: superseded clean worktree/branch `feat/task3-schema-contract-clean` removed after file/patch comparison; `stash@{0}` preserved
@@ -33,9 +34,9 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 | --- | --- | --- |
 | FND-01 | PARTIAL | README documents prerequisites and the root verifier exercises the installed tools, but it does not enforce Java 17 or Node 24 versions. Consequence: an unsupported version can reach later failures. Next: add explicit version gates. |
 | FND-02 | PASS | One root command ran server, Portal, identity, manifest, Compose, and Kubernetes static checks. |
-| FND-03 | PARTIAL | CI now generates locked Java/Node CycloneDX SBOMs and deterministic commit/build metadata, then uploads a SHA-addressed immutable evidence artifact. Local contract and generator checks pass, but this branch has not yet completed a remote GitHub Actions run. Consequence: hosted artifact retention/digest evidence remains unobserved. Next: run CI on this branch and record the artifact digest. |
+| FND-03 | PASS | CI generated locked Java/Node CycloneDX SBOMs and deterministic commit/build metadata for commit `047d662bac309dea2704c0d3e1acd6bd52937709`, then uploaded the SHA-addressed evidence artifact from GitHub Actions run `31351148994`. The hosted artifact digest is `sha256:77525ec2293e0c056c85f523d7ffc9af85f2fa1b752180a2a35a071fe1ba3ddb`. |
 | FND-04 | PASS | Architecture, schema, release states, digest rules, and PoC limitations are checked in and cross-referenced. |
-| FND-05 | PARTIAL | CI now performs a full-history, redacted Gitleaks scan with a narrow exact-value synthetic-fixture policy; the workflow and policy are contract-tested. The local environment could not reach the release download endpoint, so its first hosted scan remains unobserved. Consequence: scanner execution evidence is pending. Next: run CI on this branch and inspect the redacted reports. |
+| FND-05 | PASS | GitHub Actions run `31351148994` completed the pinned, checksum-verified Gitleaks installation and full-history redacted scan with the narrow exact-value synthetic-fixture policy. The scan result was enforced before the successful job conclusion, and its SARIF/JSON outputs were included in the commit-scoped evidence artifact. |
 | API-01 | PASS | Parser/API tests cover Agent/MCP `v1alpha1`, strict fields, stable typed errors, and OCI artifact contracts. |
 | API-02 | PASS | Dependency locks, missing/mismatched dependencies, Skill import paths, and capability cycles are tested. |
 | API-03 | PASS | Approval is bound to the canonical candidate digest and is not inherited across releases. |
@@ -72,6 +73,6 @@ Unless a row states otherwise, the platform engineering team owns every non-PASS
 
 ## Ordered Next Work
 
-1. Run the configured CI evidence workflow on this branch and record its immutable artifact digest and redacted scan reports.
-2. Integrate external GitOps and K3s admission/reconciliation, then execute live network/RBAC/failure tests.
+1. Produce and confirm the external GitOps and K3s admission/reconciliation design, including trust, rollback, and live test boundaries.
+2. Implement the confirmed GitOps/K3s slice, then execute live network, RBAC, drift, and failure tests.
 3. Add Model Gateway, Agent + MCP + Skill invocation, observability, rollback, and the restricted read-only CLI.
