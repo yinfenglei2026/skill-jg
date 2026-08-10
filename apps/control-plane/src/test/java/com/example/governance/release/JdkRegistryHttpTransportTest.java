@@ -41,7 +41,7 @@ class JdkRegistryHttpTransportTest {
         Path key = Files.createTempFile("cosign", ".pub");
         ArtifactVerificationSettings settings = new ArtifactVerificationSettings(
                 "registry.example.internal", "robot", "secret".toCharArray(), null,
-                Path.of(System.getProperty("java.home"), "bin", "java.exe").toAbsolutePath(), key,
+                javaExecutable(), key,
                 java.util.Set.of(URI.create("https://builder.example/internal")),
                 Duration.ofSeconds(1), Duration.ofSeconds(1), 1024);
 
@@ -49,6 +49,11 @@ class JdkRegistryHttpTransportTest {
                 .send(new RegistryHttpRequest("GET", URI.create("https://127.0.0.1:1/"), Map.of(), new byte[0],
                         Duration.ofMillis(50))))
                 .isInstanceOfAny(java.io.IOException.class, ArtifactVerificationException.class);
+    }
+
+    private static Path javaExecutable() {
+        String executable = System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
+        return Path.of(System.getProperty("java.home"), "bin", executable).toAbsolutePath();
     }
 
     private static final class CountingInputStream extends ByteArrayInputStream {

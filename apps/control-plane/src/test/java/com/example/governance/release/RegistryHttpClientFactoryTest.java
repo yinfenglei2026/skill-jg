@@ -36,8 +36,13 @@ class RegistryHttpClientFactoryTest {
     private ArtifactVerificationSettings settings(Path ca) throws Exception {
         Path key = Files.writeString(tempDir.resolve("key-" + System.nanoTime()), "key");
         return new ArtifactVerificationSettings("registry.example.internal", "robot", "secret".toCharArray(),
-                ca, Path.of(System.getProperty("java.home"), "bin", "java.exe").toAbsolutePath(), key,
+                ca, javaExecutable(), key,
                 Set.of(URI.create("https://builder.example/internal")), Duration.ofSeconds(1),
                 Duration.ofSeconds(1), 1024);
+    }
+
+    private Path javaExecutable() {
+        String executable = System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
+        return Path.of(System.getProperty("java.home"), "bin", executable).toAbsolutePath();
     }
 }
