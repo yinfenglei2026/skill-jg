@@ -16,4 +16,4 @@ if [ ! -r "$wrapper_jar" ]; then
   fi
 fi
 
-exec java -classpath "$wrapper_jar" org.apache.maven.wrapper.MavenWrapperMain "$@"
+exec java "-Dmaven.multiModuleProjectDirectory=$base_dir" -classpath "$wrapper_jar" org.apache.maven.wrapper.MavenWrapperMain "$@"

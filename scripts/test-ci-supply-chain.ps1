@@ -6,6 +6,7 @@ $pomPath = Join-Path $repositoryRoot 'apps\control-plane\pom.xml'
 $portalPackagePath = Join-Path $repositoryRoot 'apps\portal\package.json'
 $rootVerifierPath = Join-Path $repositoryRoot 'scripts\verify.ps1'
 $workflowPath = Join-Path $repositoryRoot '.github\workflows\ci.yml'
+$mavenWrapperPath = Join-Path $repositoryRoot 'mvnw'
 if (-not (Test-Path -LiteralPath $pomPath)) {
     throw 'Control-plane Maven project is missing: apps/control-plane/pom.xml'
 }
@@ -20,6 +21,14 @@ if (-not (Test-Path -LiteralPath $rootVerifierPath)) {
 }
 if (-not (Test-Path -LiteralPath $gitleaksConfigPath)) {
     throw 'Gitleaks configuration is missing: .gitleaks.toml'
+}
+if (-not (Test-Path -LiteralPath $mavenWrapperPath)) {
+    throw 'Unix Maven wrapper is missing: mvnw'
+}
+
+$mavenWrapper = Get-Content -LiteralPath $mavenWrapperPath -Raw
+if ($mavenWrapper -notmatch [regex]::Escape('"-Dmaven.multiModuleProjectDirectory=$base_dir"')) {
+    throw 'Unix Maven wrapper must pass the repository root as maven.multiModuleProjectDirectory.'
 }
 
 $pom = Get-Content -LiteralPath $pomPath -Raw
